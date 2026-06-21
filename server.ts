@@ -27,7 +27,7 @@ const getGeminiClient = () => {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   // Set up standard parsers with generous limits to support medium-to-large medical documents
   app.use(express.json({ limit: "20mb" }));
