@@ -38,133 +38,116 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  // File parsing endpoint
-  app.post("/api/analyze-medical-file", async (req, res) => {
+  // Unified integrated dossier analysis endpoint
+  app.post("/api/analyze-medical-dossier", async (req, res) => {
     try {
-      const { fileName, fileType, base64 } = req.body;
+      const { documentFile, imageFile, medicalHistory } = req.body;
 
-      if (!base64 || !fileName || !fileType) {
-        return res.status(400).json({ error: "Missing required parameters: fileName, fileType, or base64" });
+      if (!documentFile && !imageFile) {
+        return res.status(400).json({ error: "Please upload at least one clinical document or a medical imaging file to analyze." });
       }
 
-      const buffer = Buffer.from(base64, "base64");
-      let extractedText = "";
-      let isNativeFormat = false; // Whether Gemini can process base64 natively (PDF/Image)
-      let geminiMimeType = fileType;
+      const parts: any[] = [];
+      let textInstructions = "Please analyze this patient's clinical file and provide organized results. ";
 
-      // Classify format & handle extraction if conversion is needed
-      const lowerName = fileName.toLowerCase();
-      
-      if (lowerName.endsWith(".docx") || lowerName.endsWith(".doc")) {
-        // Convert MS Word DOCX to plain text
-        try {
-          const result = await mammoth.extractRawText({ buffer });
-          extractedText = result.value;
-          if (!extractedText.trim()) {
-            extractedText = "[Attempted text extraction from Word document, but it returned empty. The file might contain only images or be blank.]";
+      if (medicalHistory) {
+        textInstructions += `\n[Patient Pre-existing Medical History & Context]:\n"${medicalHistory}"\n`;
+      }
+
+      // Handle Clinical Document if provided
+      if (documentFile) {
+        const { fileName, fileType, base64 } = documentFile;
+        const buffer = Buffer.from(base64, "base64");
+        const lowerName = fileName.toLowerCase();
+        let extractedText = "";
+
+        if (lowerName.endsWith(".docx") || lowerName.endsWith(".doc")) {
+          try {
+            const result = await mammoth.extractRawText({ buffer });
+            extractedText = result.value;
+          } catch (e: any) {
+            extractedText = `[Failed to extract text from Word document: ${e.message}]`;
           }
-        } catch (docxErr: any) {
-          console.error("Mammoth text extraction error:", docxErr);
-          extractedText = `[Failed to extract text from Word document: ${docxErr.message || docxErr}]`;
+        } else if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv")) {
+          try {
+            const workbook = xlsx.read(buffer, { type: "buffer" });
+            let sheetData = "";
+            workbook.SheetNames.forEach((name) => {
+              const worksheet = workbook.Sheets[name];
+              const csv = xlsx.utils.sheet_to_csv(worksheet);
+              if (csv.trim()) {
+                sheetData += `\n--- Sheet: ${name} ---\n${csv}\n`;
+              }
+            });
+            extractedText = sheetData || "[Empty sheet]";
+          } catch (e: any) {
+            extractedText = `[Failed to parse sheet: ${e.message}]`;
+          }
+        } else if (fileType.includes("text/") || lowerName.endsWith(".txt") || lowerName.endsWith(".json") || lowerName.endsWith(".md")) {
+          extractedText = buffer.toString("utf-8");
         }
-      } else if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv")) {
-        // Convert Excel worksheets or CSV files to structured text
-        try {
-          const workbook = xlsx.read(buffer, { type: "buffer" });
-          let sheetData = "";
-          workbook.SheetNames.forEach((name) => {
-            const worksheet = workbook.Sheets[name];
-            const csv = xlsx.utils.sheet_to_csv(worksheet);
-            if (csv.trim()) {
-              sheetData += `\n--- Sheet: ${name} ---\n${csv}\n`;
+
+        // If it is PDF, we can upload it as native inlineData!
+        if (fileType.includes("pdf")) {
+          parts.push({
+            inlineData: {
+              data: base64,
+              mimeType: fileType,
             }
           });
-          extractedText = sheetData || "[The spreadsheet file appears empty of content.]";
-        } catch (xlsxErr: any) {
-          console.error("XLSX text extraction error:", xlsxErr);
-          extractedText = `[Failed to parse spreadsheet content: ${xlsxErr.message || xlsxErr}]`;
+          textInstructions += `\n[Primary PDF Clinical Document Attachment Included]\n`;
+        } else if (fileType.includes("image/")) {
+          // If they uploaded image in front-end document bucket, process it natively
+          parts.push({
+            inlineData: {
+              data: base64,
+              mimeType: fileType,
+            }
+          });
+          textInstructions += `\n[Primary Document Image Attachment Included]\n`;
+        } else if (extractedText) {
+          textInstructions += `\n--- PRIMARY CLINICAL DOCUMENT TEXT CONTENT --- \n${extractedText}\n--- END PRIMARY CLINICAL DOCUMENT ---\n`;
         }
-      } else if (fileType.includes("text/") || lowerName.endsWith(".txt") || lowerName.endsWith(".json") || lowerName.endsWith(".md")) {
-        // Decode raw text / simple JSON formats
-        extractedText = buffer.toString("utf-8");
-      } else if (fileType.includes("pdf") || fileType.includes("image/")) {
-        // Supported natively by Gemini multimodal models
-        isNativeFormat = true;
-        // Standardize image types if needed
-        geminiMimeType = fileType;
-      } else {
-        // Fallback: try reading as plain UTF-8 text string
-        extractedText = buffer.toString("utf-8");
       }
+
+      // Handle Imaging visual scan image if provided
+      if (imageFile) {
+        const { fileName, fileType, base64 } = imageFile;
+        parts.push({
+          inlineData: {
+            data: base64,
+            mimeType: fileType,
+          }
+        });
+        textInstructions += `\n[Imaging visual scan or diagnostic image file attached: "${fileName}" of type ${fileType}]\n`;
+      }
+
+      parts.push({ text: textInstructions });
 
       const ai = getGeminiClient();
 
-      // Configure system prompting to structure the response exactly as a robust MedicalData JSON schema
-      const systemInstruction = `You are an expert AI clinical data analyst and medical document parser.
-Verify details carefully. Your task is to extract medical parameters from the uploaded file and structure them into a highly accurate, clean JSON response that respects the user's health information.
-Do not hallucinate categories or invent fake information. Highlight clear facts.
+      const systemInstruction = `You are Aegis-Clinical, an exceptionally precise multimodal medical intelligence system and diagnostic scanner interpreter.
+Your task is to analyze an integrated clinical dossier containing potentially a patient document, a diagnostic imaging visualization (like Xray, CT scan, MRI, pathology tissue slide, H&E stains, Ultrasounds, etc.), and patient-provided pre-existing health history.
 
-Return a JSON with the following structure:
-patientName: (string, blank if omitted)
-patientAge: (string, blank if omitted)
-patientGender: (string, blank if omitted)
-patientId: (string, blank if omitted, e.g. MRN, card number, hospital record number)
-documentDate: (string, date of medical document as written/implicit, blank if omitted)
-documentType: (string, e.g. blood panel index, radiological scan, discharge note, medication list, clinical prescription)
-facilityName: (string, name of hospital or lab name if applicable)
-providerName: (string, doctor or clinical provider name if available)
-summary: (string, 2 TO 3 sentences explaining what this document is, what its overall outlook is, written in friendly, clear, respectful language for the patient - translation to layperson terms)
-findings: (array of objects, containing list of clinically measurable or notable params, labs, parameters, etc., e.g., blood cell counts, MRI abnormalities, prescription instructions:
-  - parameter: string (e.g. Glucose, Heart Rate, Left Knee Condition)
-  - value: string (e.g. 104 mg/dL, 72 bpm, Mild joint effusion)
-  - referenceRange: string (optional, e.g. 70-99 mg/dL or normal range, blank if omitted)
+You MUST extract and integrate findings into a rigorous JSON compliance:
+1. "imageObservations": If a clinical image/scan was attached, act as an expert radiologist/pathologist and provide a pristine, state-of-the-art language summary of the visualization - describing specific anatomical structures viewed, any density changes, calcifications, lesions, potential fractures, or healthy tissue configurations. If no image was provided, leave this field blank or null.
+2. "summary": Provide a unified, empathetic 3-to-4 sentence layman's synthesis which elegantly combines findings from BOTH the clinical document AND the imaging observations, while also contextualizing them for the user in light of their pre-existing \`medicalHistory\` (e.g., advising them on how these findings interrelate with past history).
+3. "findings": A list of all measurable or medically significant laboratory parameters, vital signs, or radiological/pathological findings (e.g. glucose, HbA1c, pulmonary consolidation, femur bone alignment, tissue biopsy lymphocyte counts):
+  - parameter: string (e.g., 'Calcium', 'Lung Fields', 'Bone Alignment')
+  - value: string (e.g., '9.8 mg/dL', 'Streaky opacity in right lower lobe', 'No cortical fracture')
+  - referenceRange: string (optional, e.g., '8.5-10.2 mg/dL')
   - status: string (MUST be: NORMAL, HIGH, LOW, or ABNORMAL)
-  - notes: string (optional, e.g. elevated, indicative of slight prediabetes, or fully normal)
-)
-diagnoses: (array of strings, formal clinically diagnosed conditions stated in document, e.g. "Essential Hypertension Status", "Acute Bronchitis")
-medicationsAndRecommendations: (array of objects, list of prescribed medications or medical advices:
-  - item: string (medication name or instruction name)
-  - dosageOrInstructions: string (optional instruction/dose, e.g. 500mg once daily with breakfast)
-  - purpose: string (optional purpose, e.g. hypertension control/lower inflammation)
-)
-criticalAlerts: (array of strings, any critical out-of-range clinical flags or emergency alerts that patients MUST see immediately. Empty array if none.)`;
+  - notes: string (optional, e.g. elevated, suggestive of recovery, normal)
+4. "diagnoses": List of diagnosed clinical conditions mentioned explicitly, or principal impressions derived (e.g. 'Type 2 Diabetes mellitus', 'Pneumonia suspect', 'Unremarkable tissue biopsy').
+5. "medicationsAndRecommendations": Any recommended therapies, prescription items, behavioral modifications, or clinical tests to ask a physician:
+  - item: string
+  - dosageOrInstructions: string (optional)
+  - purpose: string (optional)
+6. "criticalAlerts": Critical out-of-range clinical alerts or urgent flags requiring immediate physician notice (e.g. critically high potassium, severe pneumonia, tissue malignancy risks). Empty array if none.`;
 
-      let contents: any;
-
-      if (isNativeFormat) {
-        // Send actual PDF/image content inline to the multimodal engine
-        contents = {
-          parts: [
-            {
-              inlineData: {
-                data: base64,
-                mimeType: geminiMimeType,
-              },
-            },
-            {
-              text: "Extract and map the complete clinical variables present in this document into the requested JSON schema. Write clinically detailed findings and understandable layman summaries.",
-            },
-          ],
-        };
-      } else {
-        // Send pre-extracted plain text content to Gemini
-        contents = {
-          parts: [
-            {
-              text: `Please analyze the following extracted text content from the file "${fileName}" and output structured clinical information:
-
---- BEGIN EXTRACTED TEXT ---
-${extractedText}
---- END EXTRACTED TEXT ---`,
-            },
-          ],
-        };
-      }
-
-      // Generate medical report JSON using gemini-3.5-flash
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents,
+        contents: { parts },
         config: {
           systemInstruction,
           responseMimeType: "application/json",
@@ -180,6 +163,7 @@ ${extractedText}
               facilityName: { type: Type.STRING },
               providerName: { type: Type.STRING },
               summary: { type: Type.STRING },
+              imageObservations: { type: Type.STRING },
               findings: {
                 type: Type.ARRAY,
                 items: {
@@ -222,14 +206,14 @@ ${extractedText}
 
       const resultText = response.text;
       if (!resultText) {
-        throw new Error("No data returned from Gemini analysis engine.");
+        throw new Error("No synthesis data returned from Aegis AI execution layer.");
       }
 
       const parsedJSON = JSON.parse(resultText.trim());
-      res.json({ success: true, data: parsedJSON, originalFileName: fileName });
+      res.json({ success: true, data: parsedJSON });
     } catch (err: any) {
-      console.error("Analysis Endpoint Failure:", err);
-      res.status(500).json({ error: err.message || "An error occurred while compiling your medical report." });
+      console.error("Dossier endpoint failure:", err);
+      res.status(500).json({ error: err.message || "An error occurred compiling your integrated medical dossier." });
     }
   });
 

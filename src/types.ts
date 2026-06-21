@@ -7,7 +7,8 @@ export interface MedicalData {
   documentType: string;
   facilityName?: string;
   providerName?: string;
-  summary: string;
+  summary: string; // Dynamic combination of medical data + visual image observations
+  imageObservations?: string; // Foundational language translation of the clinical scan image
   findings: Array<{
     parameter: string;
     value: string;
@@ -36,4 +37,10 @@ export interface UploadedFileState {
   size: number;
   type: string;
   base64?: string;
+}
+
+export interface IntegratedDossierState {
+  documentFile: UploadedFileState | null;
+  imageFile: UploadedFileState | null;
+  medicalHistory: string;
 }

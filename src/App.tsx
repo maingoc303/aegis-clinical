@@ -7,7 +7,8 @@ import { MedicalData, UploadedFileState } from "./types";
 
 export default function App() {
   const [medicalData, setMedicalData] = useState<MedicalData | null>(null);
-  const [uploadedFile, setUploadedFile] = useState<UploadedFileState | null>(null);
+  const [documentFile, setDocumentFile] = useState<UploadedFileState | null>(null);
+  const [imageFile, setImageFile] = useState<UploadedFileState | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
@@ -16,9 +17,14 @@ export default function App() {
     setAnalysisError(null);
   };
 
-  const handleAnalysisSuccess = (data: MedicalData, file: UploadedFileState) => {
+  const handleAnalysisSuccess = (
+    data: MedicalData,
+    doc: UploadedFileState | null,
+    img: UploadedFileState | null
+  ) => {
     setMedicalData(data);
-    setUploadedFile(file);
+    setDocumentFile(doc);
+    setImageFile(img);
     setIsProcessing(false);
   };
 
@@ -29,7 +35,8 @@ export default function App() {
 
   const handleReset = () => {
     setMedicalData(null);
-    setUploadedFile(null);
+    setDocumentFile(null);
+    setImageFile(null);
     setAnalysisError(null);
   };
 
@@ -48,7 +55,7 @@ export default function App() {
                 Aegis<span className="text-emerald-700 italic font-medium font-sans ml-0.5">Clinical</span>
               </span>
               <span className="hidden sm:inline-block ml-3 px-2 py-0.5 bg-stone-100 text-stone-500 rounded text-[9px] font-mono tracking-widest uppercase">
-                v1.1 Security Secure
+                v2.0 Multimodal Joint Schema
               </span>
             </div>
           </div>
@@ -56,7 +63,7 @@ export default function App() {
           <div className="flex items-center gap-4 text-xs font-mono text-stone-500">
             <div className="hidden md:flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Gemini Clinical Node Online</span>
+              <span>Multi-Source Gemini Core Node Active</span>
             </div>
           </div>
         </div>
@@ -71,14 +78,14 @@ export default function App() {
             Aegis Intelligence <span className="text-stone-500 italic font-normal">Dossier</span>
           </h1>
           <p className="text-stone-500 text-sm max-w-3xl leading-relaxed font-light">
-            An advanced AI assistant designed to extract vital indices, structure clinical diagnostic variables, and translate complex laboratory reports into actionable layperson insights.
+            An advanced physical/radiological &amp; clinical text metadata intelligence system. Securely transcribe and aggregate diagnostic sheets, imaging scans (X-Rays, CTs, MRIs), and medical histories into unified, context-synced insights.
           </p>
         </div>
 
         {/* Core Layout Split */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
-          {/* Left Block: File Upload and Parsed Report (7/12 cols) */}
+          {/* Left Block: Combined File Entry & Structured Output (7/12 cols) */}
           <div className="lg:col-span-7 space-y-6">
             
             <UploadZone
@@ -113,7 +120,8 @@ export default function App() {
             {/* Structured Medical Record output */}
             <DossierDisplay 
               medicalData={medicalData} 
-              fileState={uploadedFile} 
+              documentFile={documentFile} 
+              imageFile={imageFile}
             />
 
           </div>
@@ -133,8 +141,8 @@ export default function App() {
                 <div className="flex gap-2.5 items-start">
                   <Clock size={15} className="text-stone-500 shrink-0 mt-0.5" />
                   <p className="text-stone-600 leading-normal font-light">
-                    <span className="font-medium text-stone-850 block">Real-time Context Synced</span>
-                    Once analyzed, the chatbot maintains active access to your file’s biomarkers so every response correlates directly.
+                    <span className="font-medium text-stone-850 block">Conjoint Multi-Modal Synced</span>
+                    All chatbots remain fully linked to the structured findings matrix AND any visual observations extracted from your scans.
                   </p>
                 </div>
 
@@ -159,10 +167,10 @@ export default function App() {
       <footer className="bg-stone-900 text-stone-400 py-10 mt-12 border-t border-stone-950 z-10 font-mono text-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-stone-800 pb-6">
-            <span>AEGIS PARSER SYSTEM v1.1.2</span>
+            <span>AEGIS PARSER SYSTEM v2.0.0</span>
             <div className="flex items-center gap-1.5">
               <span>ATMOSPHERE &amp; DATA ENGINE:</span>
-              <span className="text-emerald-400 font-semibold bg-emerald-950 px-2.5 py-0.5 rounded border border-emerald-900 text-[10px]">NOMINAL SECURE</span>
+              <span className="text-emerald-400 font-semibold bg-emerald-950 px-2.5 py-0.5 rounded border border-emerald-900 text-[10px]">MULTIMODAL ACTIVE</span>
             </div>
           </div>
           <p className="text-[10px] text-stone-500 leading-relaxed font-light text-center sm:text-left">
