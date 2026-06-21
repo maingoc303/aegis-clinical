@@ -41,10 +41,16 @@ async function startServer() {
   // Unified integrated dossier analysis endpoint
   app.post("/api/analyze-medical-dossier", async (req, res) => {
     try {
-      const { documentFile, imageFile, medicalHistory } = req.body;
+      const { documentFile, imageFile, medicalHistory, model } = req.body;
 
       if (!documentFile && !imageFile) {
         return res.status(400).json({ error: "Please upload at least one clinical document or a medical imaging file to analyze." });
+      }
+
+      let selectedModel = model || "gemini-3.5-flash";
+      const validModels = ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite"];
+      if (!validModels.includes(selectedModel)) {
+        selectedModel = "gemini-3.5-flash";
       }
 
       const parts: any[] = [];
@@ -146,7 +152,7 @@ You MUST extract and integrate findings into a rigorous JSON compliance:
 6. "criticalAlerts": Critical out-of-range clinical alerts or urgent flags requiring immediate physician notice (e.g. critically high potassium, severe pneumonia, tissue malignancy risks). Empty array if none.`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: selectedModel,
         contents: { parts },
         config: {
           systemInstruction,
@@ -220,10 +226,16 @@ You MUST extract and integrate findings into a rigorous JSON compliance:
   // AI Medical Chatbot endpoint
   app.post("/api/medical-chat", async (req, res) => {
     try {
-      const { messages, medicalContext } = req.body;
+      const { messages, medicalContext, model } = req.body;
 
       if (!messages || !Array.isArray(messages)) {
         return res.status(400).json({ error: "Missing or invalid 'messages' array in request body." });
+      }
+
+      let selectedModel = model || "gemini-3.5-flash";
+      const validModels = ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite"];
+      if (!validModels.includes(selectedModel)) {
+        selectedModel = "gemini-3.5-flash";
       }
 
       const ai = getGeminiClient();
@@ -253,7 +265,7 @@ Your strict operational safety protocols:
 
       // Generate Chat completion
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: selectedModel,
         contents: geminiContents,
         config: {
           systemInstruction: chatSystemInstruction,
@@ -266,6 +278,88 @@ Your strict operational safety protocols:
     } catch (err: any) {
       console.error("Chat Endpoint Failure:", err);
       res.status(500).json({ error: err.message || "The medical chatbot encountered an error answering your message." });
+    }
+  });
+
+  // AI Longitudinal Trend Analyzer endpoint
+  app.post("/api/analyze-longitudinal", async (req, res) => {
+    try {
+      const { records, model } = req.body;
+
+      if (!records || !Array.isArray(records) || records.length === 0) {
+        return res.status(400).json({ error: "Please upload and process at least one report to perform longitudinal analysis." });
+      }
+
+      let selectedModel = model || "gemini-3.5-flash";
+      const validModels = ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite"];
+      if (!validModels.includes(selectedModel)) {
+        selectedModel = "gemini-3.5-flash";
+      }
+
+      // Sort chronological ascending (oldest first)
+      const sortedRecords = [...records].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // Prepare chronological text report log
+      let chronologyExcerpt = "Chronological Patient Historical Records Provided:\n\n";
+      sortedRecords.forEach((rec, idx) => {
+        chronologyExcerpt += `[Record #${idx + 1}] Date: ${rec.date}\n`;
+        if (rec.fileName) chronologyExcerpt += `- Attachment File: ${rec.fileName}\n`;
+        if (rec.imageName) chronologyExcerpt += `- Visual Scan Image: ${rec.imageName}\n`;
+        chronologyExcerpt += `- Hospital Type: ${rec.medicalData.documentType || "Consultation/Lab"}\n`;
+        chronologyExcerpt += `- Main Summary: ${rec.medicalData.summary}\n`;
+        if (rec.medicalData.imageObservations) {
+          chronologyExcerpt += `- Imaging Scan Analysis: ${rec.medicalData.imageObservations}\n`;
+        }
+        
+        chronologyExcerpt += `- Biomarker Finding Parameters:\n`;
+        if (rec.medicalData.findings && rec.medicalData.findings.length > 0) {
+          rec.medicalData.findings.forEach((f: any) => {
+            chronologyExcerpt += `  * Parameter: "${f.parameter}", Value: "${f.value}", Normal-Range: "${f.referenceRange || "N/A"}", Status: "${f.status}"\n`;
+          });
+        } else {
+          chronologyExcerpt += `  * No direct numerical metrics detected.\n`;
+        }
+        
+        if (rec.medicalData.diagnoses && rec.medicalData.diagnoses.length > 0) {
+          chronologyExcerpt += `- Clinical Impressions/Diagnoses: ${rec.medicalData.diagnoses.join(", ")}\n`;
+        }
+        chronologyExcerpt += "\n";
+      });
+
+      const ai = getGeminiClient();
+
+      const longitudinalSystemInstruction = `You are Aegis-Longitudinal-Explorer, an exceptionally precise clinical trend analytics engine.
+Your purpose is to conduct a longitudinal evaluation of a patient's historical medical records over multiple sequenced collection dates.
+
+You must examine and output a highly polished, professional medical progression report structured in clean markdown:
+1. **Executive Progression Summary**: A concise (1-2 paragraph) description of how the patient's general health status is changing, highlighting any clear system patterns.
+2. **Biomarker Progression Logs**: Highlight which parameters (like e.g. Glucose, blood pressure, white blood cells) have been measured multiple times. Note whether values are showing improvement (approaching normal ranges), stability, or clear deterioration/safety alarms.
+3. **Condition Progression Analysis**: Review has past conditions or impressions resolved, worsened, or stayed chronic.
+4. **Therapeutic Feedback loop**: Give a clinical evaluation on whether their current health updates (medications, interventions) appear to be working based on follow-up report findings.
+5. **Actionable Healthy Optimization Advice**: Recommend safe, precise lifestyle habits, monitoring intervals, or specialist follow-ups to discuss with their physician.
+
+Operational Protocols:
+- Maintain an objective, highly scientific yet deeply supportive clinical tone.
+- Never write specific drug dosages or authorized prescriptions.
+- Always conclude with a strong standard warning advising consulting a physical MD for actual medical actions.`;
+
+      const response = await ai.models.generateContent({
+        model: selectedModel,
+        contents: [
+          { text: chronologyExcerpt },
+          { text: "Analyze the chronological sequence above and output the highly comprehensive Markdown report accordingly." }
+        ],
+        config: {
+          systemInstruction: longitudinalSystemInstruction,
+          temperature: 0.25,
+        }
+      });
+
+      const replyText = response.text;
+      res.json({ success: true, analysis: replyText });
+    } catch (err: any) {
+      console.error("Longitudinal analysis failure:", err);
+      res.status(500).json({ error: err.message || "An error occurred during longitudinal trend synthesis." });
     }
   });
 

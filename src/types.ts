@@ -25,6 +25,14 @@ export interface MedicalData {
   criticalAlerts: string[];
 }
 
+export interface HistoricalRecord {
+  id: string;
+  date: string; // YYYY-MM-DD
+  fileName?: string;
+  imageName?: string;
+  medicalData: MedicalData;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "model";
@@ -44,3 +52,4 @@ export interface IntegratedDossierState {
   imageFile: UploadedFileState | null;
   medicalHistory: string;
 }
+

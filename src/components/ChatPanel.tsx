@@ -4,6 +4,7 @@ import { ChatMessage, MedicalData } from "../types";
 
 interface ChatPanelProps {
   medicalData: MedicalData | null;
+  selectedModel: string;
 }
 
 // Simple and safe text-to-HTML formatter to render Gemini's Markdown output elegantly
@@ -40,7 +41,7 @@ const formatMarkdownText = (text: string) => {
   return processedLines.join("");
 };
 
-export default function ChatPanel({ medicalData }: ChatPanelProps) {
+export default function ChatPanel({ medicalData, selectedModel }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
@@ -97,6 +98,7 @@ export default function ChatPanel({ medicalData }: ChatPanelProps) {
           content: m.content,
         })),
         medicalContext: medicalData, // Feed loaded clinical results safely server-side
+        model: selectedModel,
       };
 
       const response = await fetch("/api/medical-chat", {

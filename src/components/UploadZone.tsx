@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Upload, FileText, CheckCircle2, AlertCircle, Layers, Image as ImageIcon, History, Sparkles, X } from "lucide-react";
+import { Upload, FileText, CheckCircle2, AlertCircle, Layers, Image as ImageIcon, History, Sparkles, X, Calendar } from "lucide-react";
 import { UploadedFileState, MedicalData } from "../types";
 
 interface UploadZoneProps {
@@ -7,10 +7,12 @@ interface UploadZoneProps {
   onAnalysisSuccess: (
     medicalData: MedicalData,
     documentFile: UploadedFileState | null,
-    imageFile: UploadedFileState | null
+    imageFile: UploadedFileState | null,
+    reportDate: string
   ) => void;
   onAnalysisFailure: (errorMessage: string) => void;
   isProcessing: boolean;
+  selectedModel: string;
 }
 
 export default function UploadZone({
@@ -18,11 +20,13 @@ export default function UploadZone({
   onAnalysisSuccess,
   onAnalysisFailure,
   isProcessing,
+  selectedModel,
 }: UploadZoneProps) {
   // Independent uploading state for Document Column & Image Column
   const [docFile, setDocFile] = useState<UploadedFileState | null>(null);
   const [imageFile, setImageFile] = useState<UploadedFileState | null>(null);
   const [medicalHistory, setMedicalHistory] = useState("");
+  const [reportDate, setReportDate] = useState<string>(new Date().toISOString().split("T")[0]);
 
   const [docDragActive, setDocDragActive] = useState(false);
   const [imageDragActive, setImageDragActive] = useState(false);
@@ -121,6 +125,7 @@ export default function UploadZone({
 
     try {
       const payload = {
+        model: selectedModel,
         documentFile: docFile
           ? {
               fileName: docFile.name,
@@ -136,6 +141,7 @@ export default function UploadZone({
             }
           : null,
         medicalHistory: medicalHistory.trim() || undefined,
+        reportDate: reportDate,
       };
 
       const response = await fetch("/api/analyze-medical-dossier", {
@@ -152,7 +158,7 @@ export default function UploadZone({
         throw new Error(resData.error || "The integrated clinical analysis server dropped response.");
       }
 
-      onAnalysisSuccess(resData.data, docFile, imageFile);
+      onAnalysisSuccess(resData.data, docFile, imageFile, reportDate);
     } catch (err: any) {
       console.error("Dossier compilation failure:", err);
       onAnalysisFailure(err.message || "An unexpected error occurred while parsing the combined medical dossier.");
@@ -328,11 +334,31 @@ export default function UploadZone({
 
       </div>
 
+      {/* Report Date Selection */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-1">
+        <div className="space-y-1.5">
+          <label className="text-xs font-mono font-semibold text-stone-600 flex items-center gap-1.5">
+            <Calendar size={14} className="text-emerald-600" />
+            3. Report / Sample Collection Date
+          </label>
+          <input
+            type="date"
+            value={reportDate}
+            disabled={isProcessing}
+            onChange={(e) => setReportDate(e.target.value)}
+            className="w-full text-xs font-mono font-light p-2.5 border border-stone-200 rounded-xl bg-stone-50 text-stone-900 focus:outline-none focus:ring-1 focus:ring-emerald-600 focus:border-emerald-600 transition-all cursor-pointer"
+          />
+        </div>
+        <div className="text-[10px] text-stone-400 flex items-center pt-5 font-light leading-normal">
+          Assigning a backdate allows compiling a chronologically sorted longitudinal tracking timeline across different days.
+        </div>
+      </div>
+
       {/* Patient Background Option fields */}
       <div className="space-y-1.5">
         <label className="text-xs font-mono font-semibold text-stone-600 flex items-center gap-1.5">
           <History size={14} className="text-emerald-600" />
-          3. Patient Health History (Optional)
+          4. Patient Health History (Optional Context)
         </label>
         <textarea
           value={medicalHistory}

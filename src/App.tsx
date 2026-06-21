@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { Activity, ShieldAlert, BookOpen, Clock, HeartHandshake } from "lucide-react";
+import { Activity, ShieldAlert, BookOpen, Clock, HeartHandshake, Cpu } from "lucide-react";
 import UploadZone from "./components/UploadZone";
 import DossierDisplay from "./components/DossierDisplay";
 import ChatPanel from "./components/ChatPanel";
-import { MedicalData, UploadedFileState } from "./types";
+import LongitudinalPanel from "./components/LongitudinalPanel";
+import { MedicalData, UploadedFileState, HistoricalRecord } from "./types";
 
 export default function App() {
   const [medicalData, setMedicalData] = useState<MedicalData | null>(null);
@@ -11,6 +12,28 @@ export default function App() {
   const [imageFile, setImageFile] = useState<UploadedFileState | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // Settings: Model selection
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-3.5-flash");
+
+  // Settings: Longitudinal consent and records
+  const [consentGranted, setConsentGranted] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("aegis_longitudinal_consent");
+      return saved !== "false"; // default to true
+    } catch {
+      return true;
+    }
+  });
+
+  const [historyRecords, setHistoryRecords] = useState<HistoricalRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem("aegis_longitudinal_records");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const handleAnalysisStarted = () => {
     setIsProcessing(true);
@@ -20,17 +43,48 @@ export default function App() {
   const handleAnalysisSuccess = (
     data: MedicalData,
     doc: UploadedFileState | null,
-    img: UploadedFileState | null
+    img: UploadedFileState | null,
+    reportDate: string
   ) => {
     setMedicalData(data);
     setDocumentFile(doc);
     setImageFile(img);
     setIsProcessing(false);
+
+    // Save to browser logging list if granted
+    if (consentGranted) {
+      const newRecord: HistoricalRecord = {
+        id: `rec-${Date.now()}`,
+        date: reportDate,
+        fileName: doc ? doc.name : undefined,
+        imageName: img ? img.name : undefined,
+        medicalData: data,
+      };
+
+      setHistoryRecords((prev) => {
+        const updated = [...prev, newRecord];
+        localStorage.setItem("aegis_longitudinal_records", JSON.stringify(updated));
+        return updated;
+      });
+    }
   };
 
   const handleAnalysisFailure = (errorMsg: string) => {
     setAnalysisError(errorMsg);
     setIsProcessing(false);
+  };
+
+  const handleRemoveRecord = (id: string) => {
+    setHistoryRecords((prev) => {
+      const updated = prev.filter((r) => r.id !== id);
+      localStorage.setItem("aegis_longitudinal_records", JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleToggleConsent = (val: boolean) => {
+    setConsentGranted(val);
+    localStorage.setItem("aegis_longitudinal_consent", String(val));
   };
 
   const handleReset = () => {
@@ -73,13 +127,63 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 z-10">
         
         {/* Branding header block */}
-        <div id="welcome-header" className="space-y-2 border-b border-stone-200/50 pb-6">
-          <h1 className="font-serif text-3xl md:text-4xl font-semibold tracking-tight text-stone-950">
-            Aegis Intelligence <span className="text-stone-500 italic font-normal">Dossier</span>
-          </h1>
-          <p className="text-stone-500 text-sm max-w-3xl leading-relaxed font-light">
-            An advanced physical/radiological &amp; clinical text metadata intelligence system. Securely transcribe and aggregate diagnostic sheets, imaging scans (X-Rays, CTs, MRIs), and medical histories into unified, context-synced insights.
-          </p>
+        <div id="welcome-header" className="space-y-4 border-b border-stone-200/50 pb-6">
+          <div className="space-y-1">
+            <h1 className="font-serif text-3xl md:text-4xl font-semibold tracking-tight text-stone-950">
+              Aegis Intelligence <span className="text-stone-500 italic font-normal">Dossier</span>
+            </h1>
+            <p className="text-stone-500 text-sm max-w-3xl leading-relaxed font-light">
+              An advanced physical/radiological &amp; clinical text metadata intelligence system. Securely transcribe and aggregate diagnostic sheets, imaging scans (X-Rays, CTs, MRIs), and medical histories into unified, context-synced insights.
+            </p>
+          </div>
+
+          {/* Model selection & consent guidelines */}
+          <div className="bg-white border border-stone-200 rounded-xl p-4 md:p-5 shadow-[0_2px_8px_rgba(0,0,0,0.015)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+            
+            {/* Foundation model select */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <span className="text-xs font-mono font-semibold text-stone-600 flex items-center gap-1.5 shrink-0">
+                <Cpu size={14} className="text-emerald-600" />
+                Selected Model:
+              </span>
+              <div className="flex gap-1.5 flex-wrap">
+                {[
+                  { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash", desc: "Balanced speed & accuracy" },
+                  { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro", desc: "Expert clinical reasoning capability" },
+                  { id: "gemini-3.1-flash-lite", name: "Gemini 1.5 Lite", desc: "Ultra-fast summaries" }
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setSelectedModel(m.id)}
+                    className={`px-3 py-1.5 text-xs rounded-lg border transition-all cursor-pointer text-left ${
+                      selectedModel === m.id
+                        ? "bg-stone-900 border-stone-900 text-stone-50 font-medium shadow-sm"
+                        : "bg-stone-50/50 border-stone-200 text-stone-600 hover:border-stone-400"
+                    }`}
+                    title={m.desc}
+                  >
+                    {m.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Longitudinal archival toggle */}
+            <div className="flex items-center gap-2.5 border-t md:border-t-0 pt-3 md:pt-0 border-stone-100 shrink-0">
+              <input
+                id="grant-archive-consent"
+                type="checkbox"
+                checked={consentGranted}
+                onChange={(e) => handleToggleConsent(e.target.checked)}
+                className="w-4 h-4 rounded accent-emerald-600 border-stone-300 focus:ring-emerald-500 cursor-pointer"
+              />
+              <label htmlFor="grant-archive-consent" className="text-xs text-stone-700 cursor-pointer select-none">
+                <span className="font-semibold text-stone-905 block">Enable Longitudinal Data Bank</span>
+                <span className="block text-[10px] text-stone-400 font-light">Saves analyzed dossiers locally inside the browser timeline</span>
+              </label>
+            </div>
+
+          </div>
         </div>
 
         {/* Core Layout Split */}
@@ -93,6 +197,7 @@ export default function App() {
               onAnalysisSuccess={handleAnalysisSuccess}
               onAnalysisFailure={handleAnalysisFailure}
               isProcessing={isProcessing}
+              selectedModel={selectedModel}
             />
 
             {analysisError && (
@@ -129,7 +234,10 @@ export default function App() {
           {/* Right Block: AI Chatbot Workspace (5/12 cols) */}
           <div className="lg:col-span-5 lg:sticky lg:top-24 space-y-6">
             
-            <ChatPanel medicalData={medicalData} />
+            <ChatPanel 
+              medicalData={medicalData} 
+              selectedModel={selectedModel}
+            />
 
             {/* Quick Informational Tips Card */}
             <div className="bg-white border border-stone-200 rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.01)] space-y-4">
@@ -159,6 +267,15 @@ export default function App() {
 
           </div>
 
+        </div>
+
+        {/* 3. Longitudinal Trends Dashboard section at the bottom */}
+        <div className="pt-4">
+          <LongitudinalPanel 
+            records={historyRecords}
+            onRemoveRecord={handleRemoveRecord}
+            selectedModel={selectedModel}
+          />
         </div>
 
       </main>
