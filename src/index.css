@@ -1,0 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400..700;1,400..700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-display: "Cinzel", serif;
+}
+
+/* Custom keyframes for gentle physical drifts if needed, but we will mostly use Framer Motion */
+@keyframes sway {
+  0%, 100% { transform: translateX(0px); }
+  50% { transform: translateX(15px); }
+}
+
+@keyframes sway-reverse {
+  0%, 100% { transform: translateX(0px); }
+  50% { transform: translateX(-15px); }
+}
+
+.animate-sway {
+  animation: sway 3s ease-in-out infinite;
+}
+
+.animate-sway-reverse {
+  animation: sway-reverse 4s ease-in-out infinite;
+}
+
