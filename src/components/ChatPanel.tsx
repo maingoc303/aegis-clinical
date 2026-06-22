@@ -5,6 +5,8 @@ import { ChatMessage, MedicalData } from "../types";
 interface ChatPanelProps {
   medicalData: MedicalData | null;
   selectedModel: string;
+  expertise: string;
+  manualCurationGuidance: string;
 }
 
 // Simple and safe text-to-HTML formatter to render Gemini's Markdown output elegantly
@@ -41,7 +43,12 @@ const formatMarkdownText = (text: string) => {
   return processedLines.join("");
 };
 
-export default function ChatPanel({ medicalData, selectedModel }: ChatPanelProps) {
+export default function ChatPanel({
+  medicalData,
+  selectedModel,
+  expertise,
+  manualCurationGuidance,
+}: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
@@ -99,6 +106,8 @@ export default function ChatPanel({ medicalData, selectedModel }: ChatPanelProps
         })),
         medicalContext: medicalData, // Feed loaded clinical results safely server-side
         model: selectedModel,
+        expertise: expertise,
+        manualCurationGuidance: manualCurationGuidance,
       };
 
       const response = await fetch("/api/medical-chat", {
@@ -164,18 +173,25 @@ export default function ChatPanel({ medicalData, selectedModel }: ChatPanelProps
             </h3>
             <p className="text-[10px] text-stone-500 font-mono flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
-              {medicalData ? "SYNCED WITH LOADED DOSSIER" : "ONLINE STANDBY"}
+              {expertise ? `${expertise} SKILLS ACTIVE` : (medicalData ? "SYNCED WITH LOADED DOSSIER" : "ONLINE STANDBY")}
             </p>
           </div>
         </div>
         
-        <button 
-          onClick={clearChat}
-          className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-md transition-all text-xs font-mono tracking-wider flex items-center gap-1"
-          title="Clear dialog history"
-        >
-          <RefreshCw size={11} /> Clear
-        </button>
+        <div className="flex items-center gap-2">
+          {expertise && (
+            <span className="hidden sm:inline-block text-[9px] font-mono font-bold bg-stone-900 text-stone-100 px-2 py-1 rounded-md">
+              Skills: {expertise === "PATIENT" ? "layman" : expertise === "MD_PRACTITIONER" ? "diagnosis+rx" : expertise === "PHARMACIST" ? "pharma" : expertise === "PATHOLOGIST" ? "biomarkers" : "research"}
+            </span>
+          )}
+          <button 
+            onClick={clearChat}
+            className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-md transition-all text-xs font-mono tracking-wider flex items-center gap-1"
+            title="Clear dialog history"
+          >
+            <RefreshCw size={11} /> Clear
+          </button>
+        </div>
       </div>
 
       {/* Messages stream */}

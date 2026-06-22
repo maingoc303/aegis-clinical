@@ -24,6 +24,7 @@ interface LongitudinalPanelProps {
   records: HistoricalRecord[];
   onRemoveRecord: (id: string) => void;
   selectedModel: string;
+  expertise?: string;
 }
 
 // Simple and safe text-to-HTML parser to style markdown responses elegantly
@@ -64,7 +65,8 @@ const renderTimelineMarkdown = (text: string) => {
 export default function LongitudinalPanel({
   records,
   onRemoveRecord,
-  selectedModel
+  selectedModel,
+  expertise
 }: LongitudinalPanelProps) {
   const [activeTab, setActiveTab] = useState<"visualizer" | "report" | "graph">("visualizer");
   const [selectedParameter, setSelectedParameter] = useState<string>("");
@@ -441,7 +443,7 @@ export default function LongitudinalPanel({
                       <strong className="font-semibold text-emerald-950">Patient Knowledge Graph Engine:</strong> This interactive visual schema structures dates, biomarker measurement statistics, diagnoses, and medical interventions. You can toggle between simulating full patient registers from research databases above or analyzing your active uploaded files.
                     </div>
                   </div>
-                  <ClinicalKnowledgeGraph records={records} />
+                  <ClinicalKnowledgeGraph records={records} expertise={expertise} />
                 </div>
               ) : activeTab === "visualizer" ? (
                 <div className="space-y-6">

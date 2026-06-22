@@ -13,6 +13,8 @@ interface UploadZoneProps {
   onAnalysisFailure: (errorMessage: string) => void;
   isProcessing: boolean;
   selectedModel: string;
+  expertise: string;
+  manualCurationGuidance: string;
 }
 
 export default function UploadZone({
@@ -21,6 +23,8 @@ export default function UploadZone({
   onAnalysisFailure,
   isProcessing,
   selectedModel,
+  expertise,
+  manualCurationGuidance,
 }: UploadZoneProps) {
   // Independent uploading state for Document Column & Image Column
   const [docFile, setDocFile] = useState<UploadedFileState | null>(null);
@@ -126,6 +130,8 @@ export default function UploadZone({
     try {
       const payload = {
         model: selectedModel,
+        expertise: expertise,
+        manualCurationGuidance: manualCurationGuidance,
         documentFile: docFile
           ? {
               fileName: docFile.name,

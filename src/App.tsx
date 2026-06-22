@@ -6,6 +6,7 @@ import ChatPanel from "./components/ChatPanel";
 import LongitudinalPanel from "./components/LongitudinalPanel";
 import { MedicalData, UploadedFileState, HistoricalRecord } from "./types";
 import RegulatoryConsentModal from "./components/RegulatoryConsentModal";
+import ClinicalCurationPanel from "./components/ClinicalCurationPanel";
 
 export default function App() {
   const [medicalData, setMedicalData] = useState<MedicalData | null>(null);
@@ -16,6 +17,37 @@ export default function App() {
 
   // Settings: Model selection
   const [selectedModel, setSelectedModel] = useState<string>("gemini-3.5-flash");
+
+  // Expert curation and clinical skills folder guidance
+  const [clinicalExpertise, setClinicalExpertise] = useState<string>(() => {
+    try {
+      return localStorage.getItem("aegis_clinical_expertise") || "PATIENT";
+    } catch {
+      return "PATIENT";
+    }
+  });
+
+  const [curationGuidance, setCurationGuidance] = useState<string>(() => {
+    try {
+      return localStorage.getItem("aegis_curation_guidance") || "";
+    } catch {
+      return "";
+    }
+  });
+
+  const handleExpertiseChange = (roleId: string) => {
+    setClinicalExpertise(roleId);
+    try {
+      localStorage.setItem("aegis_clinical_expertise", roleId);
+    } catch {}
+  };
+
+  const handleGuidanceChange = (val: string) => {
+    setCurationGuidance(val);
+    try {
+      localStorage.setItem("aegis_curation_guidance", val);
+    } catch {}
+  };
 
   // Modal state for clinical standards consent (GDPR/HIPAA/California CCPA)
   const [isConsentModalOpen, setIsConsentModalOpen] = useState<boolean>(false);
@@ -212,6 +244,14 @@ export default function App() {
           </div>
         </div>
 
+        {/* Clinical Expertise & Skills Curation Console */}
+        <ClinicalCurationPanel
+          currentExpertise={clinicalExpertise}
+          onExpertiseChange={handleExpertiseChange}
+          manualCurationGuidance={curationGuidance}
+          onGuidanceChange={handleGuidanceChange}
+        />
+
         {/* Core Layout Split */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
@@ -224,6 +264,8 @@ export default function App() {
               onAnalysisFailure={handleAnalysisFailure}
               isProcessing={isProcessing}
               selectedModel={selectedModel}
+              expertise={clinicalExpertise}
+              manualCurationGuidance={curationGuidance}
             />
 
             {analysisError && (
@@ -263,6 +305,8 @@ export default function App() {
             <ChatPanel 
               medicalData={medicalData} 
               selectedModel={selectedModel}
+              expertise={clinicalExpertise}
+              manualCurationGuidance={curationGuidance}
             />
 
             {/* Quick Informational Tips Card */}
@@ -301,6 +345,7 @@ export default function App() {
             records={historyRecords}
             onRemoveRecord={handleRemoveRecord}
             selectedModel={selectedModel}
+            expertise={clinicalExpertise}
           />
         </div>
 

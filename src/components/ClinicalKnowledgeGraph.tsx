@@ -18,6 +18,7 @@ import { HistoricalRecord, MedicalData } from "../types";
 
 interface ClinicalKnowledgeGraphProps {
   records: HistoricalRecord[];
+  expertise?: string;
 }
 
 interface GraphNode {
@@ -145,7 +146,7 @@ const SIMULATED_PATIENTS = [
   }
 ];
 
-export default function ClinicalKnowledgeGraph({ records }: ClinicalKnowledgeGraphProps) {
+export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalKnowledgeGraphProps) {
   const [selectedPatientId, setSelectedPatientId] = useState<string>("active");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [activeFilterType, setActiveFilterType] = useState<string>("ALL");
@@ -412,23 +413,23 @@ export default function ClinicalKnowledgeGraph({ records }: ClinicalKnowledgeGra
         break;
       case "RECORD":
         fill = "fill-emerald-600";
-        stroke = isSelected ? "stroke-emerald-400 stroke-[2.5]" : "stroke-emerald-700";
-        size = 14;
+        stroke = isSelected ? "stroke-emerald-400 stroke-[2.5]" : (expertise === "RESEARCHER" ? "stroke-emerald-400 stroke-2" : "stroke-emerald-700");
+        size = expertise === "RESEARCHER" ? 16 : 14;
         break;
       case "BIOMARKER":
         fill = "fill-sky-500";
-        stroke = isSelected ? "stroke-sky-300 stroke-[2.5]" : "stroke-sky-600";
-        size = 11;
+        stroke = isSelected ? "stroke-sky-300 stroke-[2.5]" : (expertise === "PATHOLOGIST" ? "stroke-sky-300 stroke-2 animate-pulse" : "stroke-sky-600");
+        size = expertise === "PATHOLOGIST" ? 13 : 11;
         break;
       case "DIAGNOSIS":
         fill = "fill-amber-500";
-        stroke = isSelected ? "stroke-amber-300 stroke-[2.5]" : "stroke-amber-600";
-        size = 12;
+        stroke = isSelected ? "stroke-amber-300 stroke-[2.5]" : (expertise === "MD_PRACTITIONER" ? "stroke-amber-300 stroke-2" : "stroke-amber-600");
+        size = expertise === "MD_PRACTITIONER" ? 14 : 12;
         break;
       case "MEDICATION":
         fill = "fill-purple-500";
-        stroke = isSelected ? "stroke-purple-300 stroke-[2.5]" : "stroke-purple-600";
-        size = 12;
+        stroke = isSelected ? "stroke-purple-300 stroke-[2.5]" : (expertise === "PHARMACIST" ? "stroke-purple-300 stroke-2" : "stroke-purple-600");
+        size = expertise === "PHARMACIST" ? 14 : 12;
         break;
     }
 
@@ -621,17 +622,38 @@ export default function ClinicalKnowledgeGraph({ records }: ClinicalKnowledgeGra
       <div className="md:col-span-8 relative min-h-[460px] bg-stone-950 text-white overflow-hidden p-3 flex flex-col justify-between">
         
         {/* Graph Header details overlay */}
-        <div className="absolute top-4 left-4 z-10 space-y-0.5 bg-stone-900/80 backdrop-blur border border-stone-800 p-3 rounded-xl pointer-events-none shadow-md">
-          <p className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold flex items-center gap-1.5 leading-none">
-            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-            Knowledge Graph Visualization
-          </p>
-          <h3 className="text-xs font-serif font-semibold text-stone-200 pt-1">
+        <div className="absolute top-4 left-4 z-10 space-y-1 bg-stone-900/90 backdrop-blur border border-stone-800 p-3.5 rounded-xl pointer-events-none shadow-md max-w-[260px] sm:max-w-[320px]">
+          <div className="flex items-center gap-1.5 justify-between">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold flex items-center gap-1 leading-none">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+              Knowledge Graph
+            </p>
+            {expertise && (
+              <span className="text-[8.5px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1 py-0.2 rounded">
+                {expertise}
+              </span>
+            )}
+          </div>
+          <h3 className="text-xs font-serif font-semibold text-stone-200 pt-0.5">
             {patientMeta.name} Relations Network
           </h3>
-          <p className="text-[9.5px] text-stone-400 font-mono font-light pt-0.5">
+          <p className="text-[9.5px] text-stone-400 font-mono font-light">
             Nodes: {graphData.nodes.length} | Edges: {graphData.edges.length}
           </p>
+          {expertise && (
+            <div className="pt-1.5 mt-1 border-t border-stone-850 text-[9px] text-stone-400 font-sans leading-tight">
+              <span className="font-semibold text-emerald-500 flex items-center gap-1">
+                <Sparkles size={8} /> Focus Folder Sync:
+              </span>
+              <p className="italic mt-0.5">
+                {expertise === "PATIENT" && "Layman translation & patient adherence ruleset triggered."}
+                {expertise === "MD_PRACTITIONER" && "Differential diagnostics & cardiovascular staging guidelines folder active."}
+                {expertise === "PHARMACIST" && "CYP metabolic path + pharmacokinetics folder active."}
+                {expertise === "PATHOLOGIST" && "Cell staining + fluid chemical thresholds folder active."}
+                {expertise === "RESEARCHER" && "Cohort phenotypic LOINC/SNOMED indexing folder active."}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Legend block overlay */}
