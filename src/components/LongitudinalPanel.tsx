@@ -13,9 +13,12 @@ import {
   RefreshCw,
   Clock,
   ChevronRight,
-  UserCheck
+  UserCheck,
+  Network,
+  Info
 } from "lucide-react";
 import { HistoricalRecord, MedicalData } from "../types";
+import ClinicalKnowledgeGraph from "./ClinicalKnowledgeGraph";
 
 interface LongitudinalPanelProps {
   records: HistoricalRecord[];
@@ -63,7 +66,7 @@ export default function LongitudinalPanel({
   onRemoveRecord,
   selectedModel
 }: LongitudinalPanelProps) {
-  const [activeTab, setActiveTab] = useState<"visualizer" | "report">("visualizer");
+  const [activeTab, setActiveTab] = useState<"visualizer" | "report" | "graph">("visualizer");
   const [selectedParameter, setSelectedParameter] = useState<string>("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisReport, setAnalysisReport] = useState<string | null>(null);
@@ -371,7 +374,7 @@ export default function LongitudinalPanel({
             
             {/* View selectors */}
             <div className="bg-stone-50 border-b border-stone-200 px-6 py-3 flex items-center justify-between shrink-0">
-              <div className="flex bg-stone-150 p-0.5 rounded-lg text-xs">
+              <div className="flex bg-stone-150 p-0.5 rounded-lg text-xs gap-0.5">
                 <button
                   onClick={() => setActiveTab("visualizer")}
                   className={`px-3 py-1.5 rounded-md font-medium transition-all ${
@@ -379,6 +382,15 @@ export default function LongitudinalPanel({
                   }`}
                 >
                   Biomarker Trend Charts
+                </button>
+                <button
+                  onClick={() => setActiveTab("graph")}
+                  className={`px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1.5 ${
+                    activeTab === "graph" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
+                  }`}
+                >
+                  <Network size={12} className="text-emerald-600" />
+                  Clinical Knowledge Graph
                 </button>
                 <button
                   onClick={() => {
@@ -421,7 +433,17 @@ export default function LongitudinalPanel({
 
             {/* TAB CONTAINER */}
             <div className="flex-1 p-6">
-              {activeTab === "visualizer" ? (
+              {activeTab === "graph" ? (
+                <div className="space-y-4 animate-fadeIn">
+                  <div className="bg-emerald-50/40 rounded-xl border border-emerald-100 p-4 text-xs leading-relaxed text-stone-700 font-light flex items-start gap-3">
+                    <Info size={16} className="text-emerald-700 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="font-semibold text-emerald-950">Patient Knowledge Graph Engine:</strong> This interactive visual schema structures dates, biomarker measurement statistics, diagnoses, and medical interventions. You can toggle between simulating full patient registers from research databases above or analyzing your active uploaded files.
+                    </div>
+                  </div>
+                  <ClinicalKnowledgeGraph records={records} />
+                </div>
+              ) : activeTab === "visualizer" ? (
                 <div className="space-y-6">
                   
                   {/* Selector Block */}

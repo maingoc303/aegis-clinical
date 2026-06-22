@@ -5,6 +5,7 @@ import DossierDisplay from "./components/DossierDisplay";
 import ChatPanel from "./components/ChatPanel";
 import LongitudinalPanel from "./components/LongitudinalPanel";
 import { MedicalData, UploadedFileState, HistoricalRecord } from "./types";
+import RegulatoryConsentModal from "./components/RegulatoryConsentModal";
 
 export default function App() {
   const [medicalData, setMedicalData] = useState<MedicalData | null>(null);
@@ -16,13 +17,17 @@ export default function App() {
   // Settings: Model selection
   const [selectedModel, setSelectedModel] = useState<string>("gemini-3.5-flash");
 
+  // Modal state for clinical standards consent (GDPR/HIPAA/California CCPA)
+  const [isConsentModalOpen, setIsConsentModalOpen] = useState<boolean>(false);
+
   // Settings: Longitudinal consent and records
   const [consentGranted, setConsentGranted] = useState<boolean>(() => {
     try {
-      const saved = localStorage.getItem("aegis_longitudinal_consent");
-      return saved !== "false"; // default to true
+      const savedConsent = localStorage.getItem("aegis_longitudinal_consent");
+      const savedRegulation = localStorage.getItem("aegis_data_privacy_consent_accepted") === "true";
+      return savedConsent === "true" && savedRegulation;
     } catch {
-      return true;
+      return false;
     }
   });
 
@@ -83,8 +88,29 @@ export default function App() {
   };
 
   const handleToggleConsent = (val: boolean) => {
+    if (val) {
+      const accepted = localStorage.getItem("aegis_data_privacy_consent_accepted") === "true";
+      if (!accepted) {
+        setIsConsentModalOpen(true);
+        return;
+      }
+    }
     setConsentGranted(val);
     localStorage.setItem("aegis_longitudinal_consent", String(val));
+  };
+
+  const handleAcceptRegulations = () => {
+    localStorage.setItem("aegis_data_privacy_consent_accepted", "true");
+    setConsentGranted(true);
+    localStorage.setItem("aegis_longitudinal_consent", "true");
+    setIsConsentModalOpen(false);
+  };
+
+  const handleDeclineRegulations = () => {
+    localStorage.setItem("aegis_data_privacy_consent_accepted", "false");
+    setConsentGranted(false);
+    localStorage.setItem("aegis_longitudinal_consent", "false");
+    setIsConsentModalOpen(false);
   };
 
   const handleReset = () => {
@@ -279,6 +305,14 @@ export default function App() {
         </div>
 
       </main>
+
+      {/* Regulatory custom privacy and clinical standards consent modal */}
+      <RegulatoryConsentModal
+        isOpen={isConsentModalOpen}
+        onClose={() => setIsConsentModalOpen(false)}
+        onAccept={handleAcceptRegulations}
+        onDecline={handleDeclineRegulations}
+      />
 
       {/* 3. Bottom Footer */}
       <footer className="bg-stone-900 text-stone-400 py-10 mt-12 border-t border-stone-950 z-10 font-mono text-xs">
