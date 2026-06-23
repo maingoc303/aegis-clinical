@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
 import { Upload, FileText, CheckCircle2, AlertCircle, Layers, Image as ImageIcon, History, Sparkles, X, Calendar } from "lucide-react";
 import { UploadedFileState, MedicalData } from "../types";
+import { VoiceDictationButton } from "./VoiceControls";
 
 interface UploadZoneProps {
   onAnalysisStarted: () => void;
@@ -15,6 +16,7 @@ interface UploadZoneProps {
   selectedModel: string;
   expertise: string;
   manualCurationGuidance: string;
+  activeSkills?: string[];
 }
 
 export default function UploadZone({
@@ -25,6 +27,7 @@ export default function UploadZone({
   selectedModel,
   expertise,
   manualCurationGuidance,
+  activeSkills,
 }: UploadZoneProps) {
   // Independent uploading state for Document Column & Image Column
   const [docFile, setDocFile] = useState<UploadedFileState | null>(null);
@@ -132,6 +135,7 @@ export default function UploadZone({
         model: selectedModel,
         expertise: expertise,
         manualCurationGuidance: manualCurationGuidance,
+        activeSkills: activeSkills,
         documentFile: docFile
           ? {
               fileName: docFile.name,
@@ -200,7 +204,7 @@ export default function UploadZone({
         <div className="flex flex-col space-y-2">
           <label className="text-xs font-mono font-semibold text-stone-600 flex items-center gap-1.5">
             <FileText size={14} className="text-emerald-600" />
-            1. Clinical Documents &amp; Lab Reports
+            Clinical Documents &amp; Lab Reports
           </label>
           
           <div
@@ -271,7 +275,7 @@ export default function UploadZone({
         <div className="flex flex-col space-y-2">
           <label className="text-xs font-mono font-semibold text-stone-600 flex items-center gap-1.5">
             <ImageIcon size={14} className="text-emerald-600" />
-            2. Diagnostic Imaging (X-Ray, CT, MRI, Tissue)
+            Diagnostic Imaging (X-Ray, CT, MRI, Tissue)
           </label>
           
           <div
@@ -345,7 +349,7 @@ export default function UploadZone({
         <div className="space-y-1.5">
           <label className="text-xs font-mono font-semibold text-stone-600 flex items-center gap-1.5">
             <Calendar size={14} className="text-emerald-600" />
-            3. Report / Sample Collection Date
+            Report / Sample Collection Date
           </label>
           <input
             type="date"
@@ -362,10 +366,17 @@ export default function UploadZone({
 
       {/* Patient Background Option fields */}
       <div className="space-y-1.5">
-        <label className="text-xs font-mono font-semibold text-stone-600 flex items-center gap-1.5">
-          <History size={14} className="text-emerald-600" />
-          4. Patient Health History (Optional Context)
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-mono font-semibold text-stone-600 flex items-center gap-1.5">
+            <History size={14} className="text-emerald-600" />
+            Patient Health History (Optional Context)
+          </label>
+          <VoiceDictationButton 
+            onTranscript={(text) => setMedicalHistory(prev => prev ? `${prev} ${text}` : text)}
+            placeholder="Dictating history..."
+            className="p-1.5 rounded-lg border-stone-150"
+          />
+        </div>
         <textarea
           value={medicalHistory}
           disabled={isProcessing}

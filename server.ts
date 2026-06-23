@@ -5,11 +5,200 @@ import { GoogleGenAI, Type } from "@google/genai";
 import mammoth from "mammoth";
 import * as xlsx from "xlsx";
 import dotenv from "dotenv";
+import fs from "fs";
+import fsPromises from "fs/promises";
 
 // Load environment variables
 dotenv.config();
 
 // Ensure Gemini API client is carefully initialized
+const EXPERTISE_TO_SKILLS_MAP: { [key: string]: string[] } = {
+  PATIENT: ["patient_care.md"],
+  MD_PRACTITIONER: ["differential_diagnostics.md", "pharmacology.md"],
+  PHARMACIST: ["pharmacology.md", "differential_diagnostics.md"],
+  PATHOLOGIST: ["laboratory_pathology.md", "cohort_statistics.md"],
+  RESEARCHER: ["cohort_statistics.md", "laboratory_pathology.md"],
+};
+
+// Seed database structure matching simulated patient charts
+const INITIAL_PATIENTS_DB: { [key: string]: any } = {
+  "pat-cardio-992": {
+    id: "pat-cardio-992",
+    name: "Patient AEGIS-992 (Cardiovascular Study)",
+    birth: "1954-11-23",
+    gender: "Male",
+    facility: "Metabolic Research Inst.",
+    status: "Cohort Enrolled",
+    records: [
+      {
+        id: "sim-1",
+        date: "2026-01-10",
+        fileName: "Cardio_Stress_Lab.pdf",
+        medicalData: {
+          patientName: "EHR-992 Participant",
+          patientAge: "71",
+          patientGender: "Male",
+          patientId: "pat-cardio-992",
+          documentType: "Cardiorespiratory Stress report",
+          documentDate: "2026-01-10",
+          facilityName: "Vascular Core Lab",
+          providerName: "Dr. Amanda Chen",
+          summary: "Patient demonstrates moderate myocardial perfusion discrepancy during active treadmill stress cycle. Left ventriclar hypertrophy noted on visual diagnostic ultrasound scans.",
+          imageObservations: "Visual echography indicates concentric myocardial hypertrophy with minor left atrial enlargement. Rest-stress perfusion is suboptimal.",
+          findings: [
+            { parameter: "Troponin-T", value: "0.04 ng/mL", referenceRange: "< 0.01 ng/mL", status: "HIGH", notes: "Mild systemic ischemic stress marker detected." },
+            { parameter: "Systolic BP", value: "158 mmHg", referenceRange: "90-120 mmHg", status: "HIGH", notes: "Hypertensive stress response peak." },
+            { parameter: "LVEF", value: "48 %", referenceRange: "55-70 %", status: "LOW", notes: "Systolic ejecting fractional impairment." }
+          ],
+          diagnoses: ["Arterial Hypertension", "Ischemic Heart Stress Profile", "Mild Systolic Dysfunction"],
+          medicationsAndRecommendations: [
+            { item: "Lisinopril 10mg", dosageOrInstructions: "Take 1 tablet daily in the morning", purpose: "Reduce peripheral vascular resistance and manage blood pressure." },
+            { item: "Coenzyme Q10", dosageOrInstructions: "100mg once daily with meal", purpose: "Myocardial oxidative metabolism enhancement support." }
+          ],
+          criticalAlerts: ["Eleveated Troponin-T requires cardiology follow-up"]
+        }
+      },
+      {
+        id: "sim-2",
+        date: "2026-03-12",
+        fileName: "Cardio_Followup_Lab.pdf",
+        medicalData: {
+          patientName: "EHR-992 Participant",
+          patientAge: "71",
+          patientGender: "Male",
+          patientId: "pat-cardio-992",
+          documentType: "Cardiac Lab Panels",
+          documentDate: "2026-03-12",
+          facilityName: "Vascular Core Lab",
+          providerName: "Dr. Amanda Chen",
+          summary: "Followup biochemistry panels indicate reduction in circulatory troponins and stabilization of systemic blood pressure following Lisinopril administration.",
+          findings: [
+            { parameter: "Troponin-T", value: "0.01 ng/mL", referenceRange: "< 0.01 ng/mL", status: "NORMAL", notes: "Troponin has returned to reference baseline." },
+            { parameter: "Systolic BP", value: "128 mmHg", referenceRange: "90-120 mmHg", status: "ABNORMAL", notes: "Substantially decreased, near borderline normal." },
+            { parameter: "Heart Rate", value: "68 bpm", referenceRange: "60-100 bpm", status: "NORMAL" }
+          ],
+          diagnoses: ["Arterial Hypertension (Stabilized)"],
+          medicationsAndRecommendations: [
+            { item: "Lisinopril 10mg", dosageOrInstructions: "Continue daily intake", purpose: "Maintain anti-hypertensive control." }
+          ],
+          criticalAlerts: []
+        }
+      }
+    ]
+  },
+  "pat-metabolic-082": {
+    id: "pat-metabolic-082",
+    name: "Patient AEGIS-082 (Biometabolic Diabetes Cohort)",
+    birth: "1983-09-02",
+    gender: "Female",
+    facility: "EHR Endocrine Registries",
+    status: "Sub-cohort Synced",
+    records: [
+      {
+        id: "sim-3",
+        date: "2026-02-15",
+        fileName: "Metabolic_Metrix.xlsx",
+        medicalData: {
+          patientName: "EHR-082 Female Patient",
+          patientAge: "42",
+          patientGender: "Female",
+          patientId: "pat-metabolic-082",
+          documentType: "Comprehensive Metabolic Panel",
+          documentDate: "2026-02-15",
+          facilityName: "Northside Biodiagnostics",
+          providerName: "Dr. Arthur Pendelton",
+          summary: "Elevated serum fasting glucose with parallel high HbA1c indicative of underlying Insulin Resistance or prediabetic state progression. Serum lipids are moderately aberrant.",
+          findings: [
+            { parameter: "Fasting Glucose", value: "135 mg/dL", referenceRange: "70-100 mg/dL", status: "HIGH", notes: "Consistent fasting hyperglycemia." },
+            { parameter: "HbA1c", value: "6.8 %", referenceRange: "4.0-5.6 %", status: "HIGH", notes: "Within clinical diabetic threshold parameters." },
+            { parameter: "LDL Cholesterol", value: "142 mg/dL", referenceRange: "< 100 mg/dL", status: "HIGH", notes: "Elevated hypercholesterolemia threat." }
+          ],
+          diagnoses: ["Type 2 Diabetes Mellitus", "Dyslipidemia"],
+          medicationsAndRecommendations: [
+            { item: "Metformin 500mg ER", dosageOrInstructions: "Take 1 tablet twice daily with lunch/dinner", purpose: "Enhance peripheral insulin responsiveness." },
+            { item: "Lifestyle: Glycemic Cutback", dosageOrInstructions: "Limit simple carbohydrates under 50g per day", purpose: "Lower glycation hemoglobin index." }
+          ],
+          criticalAlerts: ["HbA1c indicates pre-diabetes / diabetic threshold state"]
+        }
+      }
+    ]
+  }
+};
+
+const dbDir = path.join(process.cwd(), "data");
+const dbPath = path.join(dbDir, "patients_db.json");
+
+// Ensure patient database file is initialized with seed data
+async function initializeDatabase() {
+  try {
+    if (!fs.existsSync(dbDir)) {
+      await fsPromises.mkdir(dbDir, { recursive: true });
+    }
+    if (!fs.existsSync(dbPath)) {
+      await fsPromises.writeFile(dbPath, JSON.stringify(INITIAL_PATIENTS_DB, null, 2), "utf-8");
+      console.log("Patient database successfully seeded at: " + dbPath);
+    }
+  } catch (err) {
+    console.error("Failed to seed patient database:", err);
+  }
+}
+
+// Security Anonymization Policy: Mask patient id and names for secondary users (e.g. PHARMACIST, RESEARCHER)
+function applySecurityPolicy(patientData: any, expertise: string) {
+  const isPrimary = expertise === "MD_PRACTITIONER" || expertise === "PATHOLOGIST" || expertise === "PATIENT";
+  if (isPrimary) {
+    return patientData;
+  }
+
+  // Secondary user access control: Clone and mask sensitive details
+  const cloned = JSON.parse(JSON.stringify(patientData));
+  const rawId = cloned.id;
+  const maskedId = rawId ? `${rawId.substring(0, Math.min(rawId.length, 4))}****` : "ANONYMOUS";
+  
+  cloned.id = maskedId;
+  cloned.name = "Patient [ANONYMOUS COHORT]";
+  cloned.birth = "REDACTED";
+  
+  if (Array.isArray(cloned.records)) {
+    cloned.records = cloned.records.map((rec: any) => {
+      if (rec.medicalData) {
+        rec.medicalData = {
+          ...rec.medicalData,
+          patientName: "Patient [ANONYMOUS]",
+          patientId: maskedId,
+          summary: rec.medicalData.summary ? rec.medicalData.summary.replace(new RegExp(rawId, "g"), maskedId) : ""
+        };
+      }
+      return rec;
+    });
+  }
+  return cloned;
+}
+
+async function getSkillsContentForExpertise(expertise: string, activeSkills?: string[]): Promise<string> {
+  const filenames = activeSkills && activeSkills.length > 0
+    ? activeSkills
+    : (EXPERTISE_TO_SKILLS_MAP[expertise] || []);
+
+  if (filenames.length === 0) return "";
+
+  let combined = "\n\n*** DYNAMIC SKILL FOLDER RULES LOADED FROM WORKSPACE ACTIVE DIRECTORY ***\n";
+  const skillsDir = path.join(process.cwd(), "skills");
+  for (const file of filenames) {
+    try {
+      const safeFile = file.replace(/[^a-zA-Z0-9_\-\.]/g, "");
+      const filePath = path.join(skillsDir, safeFile);
+      if (fs.existsSync(filePath)) {
+        const content = await fsPromises.readFile(filePath, "utf-8");
+        combined += `\n--- START OF FILE: ${safeFile} ---\n${content}\n--- END OF FILE ---\n`;
+      }
+    } catch (e) {
+      console.warn(`Could not read skill file ${file}:`, e);
+    }
+  }
+  return combined;
+}
+
 const getGeminiClient = () => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -29,6 +218,9 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
+  // Initialize the persistent patients file database
+  await initializeDatabase();
+
   // Set up standard parsers with generous limits to support medium-to-large medical documents
   app.use(express.json({ limit: "20mb" }));
   app.use(express.urlencoded({ limit: "20mb", extended: true }));
@@ -38,10 +230,152 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // Retrieve all patients for the interactive figure / patient directory
+  app.get("/api/patients", async (req, res) => {
+    try {
+      const expertise = (req.query.expertise as string) || "PATIENT";
+      await initializeDatabase();
+      const content = await fsPromises.readFile(dbPath, "utf-8");
+      const db = JSON.parse(content);
+      
+      const patientsList = Object.values(db).map((patient: any) => {
+        return applySecurityPolicy(patient, expertise);
+      });
+      
+      res.json({ success: true, patients: patientsList });
+    } catch (e: any) {
+      console.error("Failed to fetch patients list:", e);
+      res.status(500).json({ error: "Failed to fetch patients database: " + e.message });
+    }
+  });
+
+  // Retrieve a specific patient's timeline records
+  app.get("/api/patient/:patientId", async (req, res) => {
+    try {
+      const { patientId } = req.params;
+      const expertise = (req.query.expertise as string) || "PATIENT";
+      
+      await initializeDatabase();
+      const content = await fsPromises.readFile(dbPath, "utf-8");
+      const db = JSON.parse(content);
+      
+      // Check if patient exists
+      const patient = db[patientId];
+      if (!patient) {
+        return res.json({ success: true, exists: false, isNew: true, records: [] });
+      }
+      
+      const securePatient = applySecurityPolicy(patient, expertise);
+      res.json({ success: true, exists: true, isNew: false, patient: securePatient });
+    } catch (e: any) {
+      console.error("Failed to retrieve patient dossier:", e);
+      res.status(500).json({ error: "Failed to retrieve patient dossier: " + e.message });
+    }
+  });
+
+  // Save/Append a record for a patient (or store anonymous data if patient is new)
+  app.post("/api/patient/:patientId/record", async (req, res) => {
+    try {
+      const { patientId } = req.params;
+      const { record } = req.body; // should be a HistoricalRecord
+      
+      if (!record) {
+        return res.status(400).json({ error: "Missing required 'record' object inside payload." });
+      }
+
+      await initializeDatabase();
+      const content = await fsPromises.readFile(dbPath, "utf-8");
+      const db = JSON.parse(content);
+      
+      if (!db[patientId]) {
+        // If user is new, we store them as an anonymous patient based on patientId/user_id
+        db[patientId] = {
+          id: patientId,
+          name: record.medicalData?.patientName || `Patient [ANONYMOUS-${patientId}]`,
+          birth: record.medicalData?.patientAge ? `Age ${record.medicalData.patientAge}` : "Unknown",
+          gender: record.medicalData?.patientGender || "Omitted",
+          facility: record.medicalData?.facilityName || "Primary Clinic Service",
+          status: "Active Tracking",
+          records: []
+        };
+      }
+      
+      // Avoid duplicate records
+      const existsIndex = db[patientId].records.findIndex((r: any) => r.id === record.id);
+      if (existsIndex >= 0) {
+        db[patientId].records[existsIndex] = record;
+      } else {
+        db[patientId].records.push(record);
+      }
+      
+      await fsPromises.writeFile(dbPath, JSON.stringify(db, null, 2), "utf-8");
+      res.json({ success: true, message: `Dossier record saved to database for Patient ID: ${patientId}` });
+    } catch (e: any) {
+      console.error("Failed to write patient record:", e);
+      res.status(500).json({ error: "Failed to store record in database: " + e.message });
+    }
+  });
+
+  // Get all markdown skills files inside the skills/ folder
+  app.get("/api/skills", async (req, res) => {
+    try {
+      const skillsDir = path.join(process.cwd(), "skills");
+      if (!fs.existsSync(skillsDir)) {
+        await fsPromises.mkdir(skillsDir, { recursive: true });
+      }
+      const files = await fsPromises.readdir(skillsDir);
+      const mdFiles = files.filter(f => f.endsWith(".md"));
+      
+      const skillsData = [];
+      for (const file of mdFiles) {
+        const filePath = path.join(skillsDir, file);
+        const content = await fsPromises.readFile(filePath, "utf-8");
+        skillsData.push({
+          id: file,
+          name: file.replace(".md", "").split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" "),
+          content: content
+        });
+      }
+      res.json(skillsData);
+    } catch (e: any) {
+      console.error("Error reading skills folder:", e);
+      res.status(500).json({ error: "Failed to list skill folders: " + e.message });
+    }
+  });
+
+  // Save or Update a specific markdown skill file inside the skills/ folder
+  app.post("/api/skills", async (req, res) => {
+    try {
+      const { id, content } = req.body;
+      if (!id || typeof content !== "string") {
+        return res.status(400).json({ error: "Missing required 'id' (filename) or 'content' string key." });
+      }
+      
+      // Clean up the filename to prevent path traversal
+      let safeId = id.replace(/[^a-zA-Z0-9_\-\.]/g, "");
+      if (!safeId.endsWith(".md")) {
+        safeId += ".md";
+      }
+
+      const skillsDir = path.join(process.cwd(), "skills");
+      if (!fs.existsSync(skillsDir)) {
+        await fsPromises.mkdir(skillsDir, { recursive: true });
+      }
+
+      const filePath = path.join(skillsDir, safeId);
+      await fsPromises.writeFile(filePath, content, "utf-8");
+
+      res.json({ success: true, file: safeId, message: `Skill guideline ${safeId} successfully synchronized at workspace.` });
+    } catch (e: any) {
+      console.error("Error writing skill file:", e);
+      res.status(500).json({ error: "Failed to save skill folder: " + e.message });
+    }
+  });
+
   // Unified integrated dossier analysis endpoint
   app.post("/api/analyze-medical-dossier", async (req, res) => {
     try {
-      const { documentFile, imageFile, medicalHistory, model, expertise, manualCurationGuidance } = req.body;
+      const { documentFile, imageFile, medicalHistory, model, expertise, manualCurationGuidance, activeSkills } = req.body;
 
       if (!documentFile && !imageFile) {
         return res.status(400).json({ error: "Please upload at least one clinical document or a medical imaging file to analyze." });
@@ -158,11 +492,14 @@ async function startServer() {
         manualCurationRules = `\n[CRITICAL OVERRIDES - HUMAN CURATION ACTIVE]:\n${manualCurationGuidance}\nYou MUST force status flags and value classifications to adhere exactly to this manual override rule.`;
       }
 
+      const activeSkillsContent = await getSkillsContentForExpertise(expertise, activeSkills);
+
       const systemInstruction = `You are Aegis-Clinical, an exceptionally precise multimodal medical intelligence system and diagnostic scanner interpreter.
 Your task is to analyze an integrated clinical dossier containing potentially a patient document, a diagnostic imaging visualization (like Xray, CT scan, MRI, pathology tissue slide, H&E stains, Ultrasounds, etc.), and patient-provided pre-existing health history.
 
 ${expertiseInstruction}
 ${manualCurationRules}
+${activeSkillsContent}
 
 You MUST extract and integrate findings into a rigorous JSON compliance:
 1. "imageObservations": If a clinical image/scan was attached, act as an expert radiologist/pathologist and provide a pristine, state-of-the-art language summary of the visualization - describing specific anatomical structures viewed, any density changes, calcifications, lesions, potential fractures, or healthy tissue configurations. If no image was provided, leave this field blank or null.
@@ -255,7 +592,7 @@ You MUST extract and integrate findings into a rigorous JSON compliance:
   // AI Medical Chatbot endpoint
   app.post("/api/medical-chat", async (req, res) => {
     try {
-      const { messages, medicalContext, model, expertise, manualCurationGuidance } = req.body;
+      const { messages, medicalContext, model, expertise, manualCurationGuidance, activeSkills } = req.body;
 
       if (!messages || !Array.isArray(messages)) {
         return res.status(400).json({ error: "Missing or invalid 'messages' array in request body." });
@@ -293,6 +630,11 @@ Please refer back to this document to address their questions accurately and cus
 
       if (manualCurationGuidance) {
         chatSystemInstruction += `\n\n[CRITICAL HUMAN CURATION OVERRIDES]: The user has established strict custom guidelines which you MUST treat as absolute truth for this session, over-riding classic rules:\n"${manualCurationGuidance}"`;
+      }
+
+      const activeSkillsContent = await getSkillsContentForExpertise(expertise, activeSkills);
+      if (activeSkillsContent) {
+        chatSystemInstruction += `\n\n${activeSkillsContent}`;
       }
 
       chatSystemInstruction += `\n\nYour strict operational safety protocols:

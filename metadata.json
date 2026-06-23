@@ -1,6 +1,6 @@
 {
   "name": "Aegis Clinical",
   "description": "An advanced AI-powered clinical metadata parser and translation assistant designed to parse lab values and provide context.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

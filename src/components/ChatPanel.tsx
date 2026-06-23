@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Send, Sparkles, AlertCircle, RefreshCw, Activity, User, Reply, Bot } from "lucide-react";
 import { ChatMessage, MedicalData } from "../types";
+import { VoiceDictationButton, TextToSpeechButton } from "./VoiceControls";
 
 interface ChatPanelProps {
   medicalData: MedicalData | null;
   selectedModel: string;
   expertise: string;
   manualCurationGuidance: string;
+  activeSkills?: string[];
 }
 
 // Simple and safe text-to-HTML formatter to render Gemini's Markdown output elegantly
@@ -48,6 +50,7 @@ export default function ChatPanel({
   selectedModel,
   expertise,
   manualCurationGuidance,
+  activeSkills,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -108,6 +111,7 @@ export default function ChatPanel({
         model: selectedModel,
         expertise: expertise,
         manualCurationGuidance: manualCurationGuidance,
+        activeSkills: activeSkills,
       };
 
       const response = await fetch("/api/medical-chat", {
@@ -228,10 +232,18 @@ export default function ChatPanel({
                     />
                   )}
                 </div>
-                {/* Timestamp */}
-                <span className={`block text-[10px] text-stone-400 font-mono ${isMe ? "text-right mr-1" : "ml-1"}`}>
-                  {msg.timestamp}
-                </span>
+                {/* Timestamp & Voice option */}
+                <div className={`flex items-center gap-2 ${isMe ? "justify-end mr-1" : "ml-1"}`}>
+                  <span className="block text-[10px] text-stone-400 font-mono">
+                    {msg.timestamp}
+                  </span>
+                  {!isMe && (
+                    <TextToSpeechButton 
+                      text={msg.content} 
+                      className="p-1 px-1.5 h-5.5 rounded-lg border-stone-150 bg-stone-100/40 text-[9px]" 
+                    />
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -297,6 +309,11 @@ export default function ChatPanel({
           disabled={isTyping}
           placeholder={medicalData ? "Ask about high values, dose protocols, or definitions..." : "Ask a medical question, CMP protocols, fasting rules..."}
           className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm font-light text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-all disabled:opacity-70"
+        />
+        <VoiceDictationButton
+          onTranscript={(text) => setInputVal(prev => prev ? `${prev} ${text}` : text)}
+          placeholder="Dictating question..."
+          className="p-3 rounded-xl border-stone-200"
         />
         <button
           type="submit"

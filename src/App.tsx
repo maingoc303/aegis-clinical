@@ -7,6 +7,7 @@ import LongitudinalPanel from "./components/LongitudinalPanel";
 import { MedicalData, UploadedFileState, HistoricalRecord } from "./types";
 import RegulatoryConsentModal from "./components/RegulatoryConsentModal";
 import ClinicalCurationPanel from "./components/ClinicalCurationPanel";
+import PatientDatabaseConsole from "./components/PatientDatabaseConsole";
 
 export default function App() {
   const [medicalData, setMedicalData] = useState<MedicalData | null>(null);
@@ -35,6 +36,15 @@ export default function App() {
     }
   });
 
+  const [activeSkills, setActiveSkills] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem("aegis_active_skills");
+      return stored ? JSON.parse(stored) : ["patient_care.md"];
+    } catch {
+      return ["patient_care.md"];
+    }
+  });
+
   const handleExpertiseChange = (roleId: string) => {
     setClinicalExpertise(roleId);
     try {
@@ -46,6 +56,13 @@ export default function App() {
     setCurationGuidance(val);
     try {
       localStorage.setItem("aegis_curation_guidance", val);
+    } catch {}
+  };
+
+  const handleActiveSkillsChange = (skills: string[]) => {
+    setActiveSkills(skills);
+    try {
+      localStorage.setItem("aegis_active_skills", JSON.stringify(skills));
     } catch {}
   };
 
@@ -72,6 +89,41 @@ export default function App() {
     }
   });
 
+  // Active patient tracking state
+  const [activePatientId, setActivePatientId] = useState<string | null>(null);
+
+  const saveRecordToDatabase = async (patientId: string, record: HistoricalRecord) => {
+    try {
+      await fetch(`/api/patient/${patientId}/record`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ record })
+      });
+    } catch (e) {
+      console.error("Failed to persist newly analyzed dossier to backend database:", e);
+    }
+  };
+
+  const handleLoadRecords = (patientId: string, records: HistoricalRecord[]) => {
+    setActivePatientId(patientId);
+    setHistoryRecords(records);
+    try {
+      localStorage.setItem("aegis_longitudinal_records", JSON.stringify(records));
+    } catch {}
+
+    // Hydrate workspace with the latest report if history is available
+    if (records.length > 0) {
+      const latest = records[records.length - 1];
+      setMedicalData(latest.medicalData);
+      setDocumentFile(latest.fileName ? { name: latest.fileName, size: 0, type: "application/pdf", base64: "" } : null);
+      setImageFile(latest.imageName ? { name: latest.imageName, size: 0, type: "image/png", base64: "" } : null);
+    } else {
+      setMedicalData(null);
+      setDocumentFile(null);
+      setImageFile(null);
+    }
+  };
+
   const handleAnalysisStarted = () => {
     setIsProcessing(true);
     setAnalysisError(null);
@@ -83,7 +135,15 @@ export default function App() {
     img: UploadedFileState | null,
     reportDate: string
   ) => {
-    setMedicalData(data);
+    // Save to browser logging list and persistent database if active patient ID is set or retrieved!
+    const targetPatientId = activePatientId || data.patientId || "patient-unassigned";
+    
+    const enrichedData = {
+      ...data,
+      patientId: targetPatientId
+    };
+
+    setMedicalData(enrichedData);
     setDocumentFile(doc);
     setImageFile(img);
     setIsProcessing(false);
@@ -95,7 +155,7 @@ export default function App() {
         date: reportDate,
         fileName: doc ? doc.name : undefined,
         imageName: img ? img.name : undefined,
-        medicalData: data,
+        medicalData: enrichedData,
       };
 
       setHistoryRecords((prev) => {
@@ -103,6 +163,14 @@ export default function App() {
         localStorage.setItem("aegis_longitudinal_records", JSON.stringify(updated));
         return updated;
       });
+
+      // Persist to backend JSON database for remote syncing
+      saveRecordToDatabase(targetPatientId, newRecord);
+      
+      // Auto-set the active patient ID if not set
+      if (!activePatientId) {
+        setActivePatientId(targetPatientId);
+      }
     }
   };
 
@@ -244,12 +312,23 @@ export default function App() {
           </div>
         </div>
 
+        {/* Patient Archive & Verification Console */}
+        <PatientDatabaseConsole
+          currentExpertise={clinicalExpertise}
+          onLoadRecords={handleLoadRecords}
+          activePatientId={activePatientId}
+          setActivePatientId={setActivePatientId}
+          historyRecords={historyRecords}
+        />
+
         {/* Clinical Expertise & Skills Curation Console */}
         <ClinicalCurationPanel
           currentExpertise={clinicalExpertise}
           onExpertiseChange={handleExpertiseChange}
           manualCurationGuidance={curationGuidance}
           onGuidanceChange={handleGuidanceChange}
+          activeSkills={activeSkills}
+          onActiveSkillsChange={handleActiveSkillsChange}
         />
 
         {/* Core Layout Split */}
@@ -266,6 +345,7 @@ export default function App() {
               selectedModel={selectedModel}
               expertise={clinicalExpertise}
               manualCurationGuidance={curationGuidance}
+              activeSkills={activeSkills}
             />
 
             {analysisError && (
@@ -307,6 +387,7 @@ export default function App() {
               selectedModel={selectedModel}
               expertise={clinicalExpertise}
               manualCurationGuidance={curationGuidance}
+              activeSkills={activeSkills}
             />
 
             {/* Quick Informational Tips Card */}

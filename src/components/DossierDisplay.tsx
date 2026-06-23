@@ -4,6 +4,7 @@ import {
   AlertTriangle, Pill, ClipboardList, Info, Hospital, Image as ImageIcon, Sparkles
 } from "lucide-react";
 import { MedicalData, UploadedFileState } from "../types";
+import { TextToSpeechButton } from "./VoiceControls";
 
 interface DossierDisplayProps {
   medicalData: MedicalData | null;
@@ -164,10 +165,13 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile }:
             <div className="p-1.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-150 shrink-0 mt-0.5">
               <Info size={14} className="stroke-[2]" />
             </div>
-            <div className="space-y-1.5">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-700 font-mono flex items-center gap-1">
-                Unified Layperson Clinical Summary
-              </h4>
+            <div className="space-y-1.5 flex-1">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-700 font-mono flex items-center gap-1">
+                  Unified Layperson Clinical Summary
+                </h4>
+                <TextToSpeechButton text={medicalData.summary || ""} className="p-1 py-1 rounded-lg text-emerald-600 bg-emerald-50/50" />
+              </div>
               <p className="text-sm text-stone-650 leading-relaxed font-light">
                 {medicalData.summary}
               </p>
