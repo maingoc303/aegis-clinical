@@ -12,19 +12,21 @@ import {
   Pill,
   BookOpen,
   Filter,
-  CheckCircle2
+  CheckCircle2,
+  LineChart as ChartIcon
 } from "lucide-react";
-import { HistoricalRecord, MedicalData } from "../types";
+import { HistoricalRecord, MedicalData, ChatMessage } from "../types";
 
 interface ClinicalKnowledgeGraphProps {
   records: HistoricalRecord[];
   expertise?: string;
+  onViewTrend?: (paramName: string) => void;
 }
 
 interface GraphNode {
   id: string;
   label: string;
-  type: "PATIENT" | "RECORD" | "BIOMARKER" | "DIAGNOSIS" | "MEDICATION";
+  type: "PATIENT" | "RECORD" | "BIOMARKER" | "DIAGNOSIS" | "MEDICATION" | "DEMOGRAPHIC" | "COUNT_RX" | "COUNT_LAB";
   val?: string;
   date?: string;
   sourceRecordId?: string;
@@ -146,38 +148,30 @@ const SIMULATED_PATIENTS = [
   }
 ];
 
-export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalKnowledgeGraphProps) {
-  const [selectedPatientId, setSelectedPatientId] = useState<string>("active");
+export default function ClinicalKnowledgeGraph({ records, expertise, onViewTrend }: ClinicalKnowledgeGraphProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [activeFilterType, setActiveFilterType] = useState<string>("ALL");
 
-  // Determine active dataset (either user uploads or simulated cohort samples)
-  const activeRecords = useMemo(() => {
-    if (selectedPatientId === "active") return records;
-    const match = SIMULATED_PATIENTS.find(p => p.id === selectedPatientId);
-    return match?.records || [];
-  }, [selectedPatientId, records]);
+  // Determine active dataset (only user uploads, no simulated cohorts)
+  const activeRecords = records;
 
   const patientMeta = useMemo(() => {
-    if (selectedPatientId === "active") {
-      const activeName = records[0]?.medicalData.patientName || "Primary Subject (Active Profile)";
-      return {
-        name: activeName,
-        birth: "Decentralized File Sync",
-        gender: records[0]?.medicalData.patientGender || "Omitted",
-        facility: records[0]?.medicalData.facilityName || "Primary Portal Care",
-        status: records.length > 0 ? "Tracking Synchronized" : "Awaiting Submissions",
-      };
-    }
-    return SIMULATED_PATIENTS.find(p => p.id === selectedPatientId) || SIMULATED_PATIENTS[0];
-  }, [selectedPatientId, records]);
+    const activeName = records[0]?.medicalData.patientName || "Primary Subject (Active Profile)";
+    return {
+      name: activeName,
+      birth: "Decentralized Sync",
+      gender: records[0]?.medicalData.patientGender || "Omitted",
+      facility: records[0]?.medicalData.facilityName || "Primary Portal Care",
+      status: records.length > 0 ? "Tracking Synchronized" : "Awaiting Submissions",
+    };
+  }, [records]);
 
-  // Construct structured Nodes and Edges from patient chronological files!
+  // Construct structured Nodes and Edges from patient chronological files tailored per clinical expertise role!
   const graphData = useMemo(() => {
     const nodes: GraphNode[] = [];
     const edges: GraphEdge[] = [];
 
-    // 1. Root Patient Node
+    // 1. Root Patient Node (Always exists)
     const patientNodeId = "NODE-PATIENT";
     nodes.push({
       id: patientNodeId,
@@ -185,202 +179,220 @@ export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalK
       type: "PATIENT"
     });
 
-    // Track duplicates to merge points into clean clusters
-    const seenBiomarkers = new Set<string>();
-    const seenDiagnoses = new Set<string>();
-    const seenMedications = new Set<string>();
+    if (activeRecords.length === 0) {
+      return { nodes, edges };
+    }
 
-    // 2. Add each date/Report record node and branch out connections
-    const sortedRecords = [...activeRecords].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // A. Demographic Node
+    const demoId = "NODE-DEMOGRAPHIC";
+    const pAge = activeRecords[0]?.medicalData.patientAge || "Unknown Age";
+    nodes.push({
+      id: demoId,
+      label: "Demographics",
+      val: `Gender: ${patientMeta.gender} | Age: ${pAge}`,
+      type: "DEMOGRAPHIC"
+    });
+    edges.push({
+      source: patientNodeId,
+      target: demoId,
+      relationship: "HAS_DEMOGRAPHICS"
+    });
 
-    sortedRecords.forEach((rec, rIdx) => {
-      const recDateId = `NODE-REC-${rec.id}`;
+    // B. Visit Nodes
+    activeRecords.forEach(rec => {
+      const recId = `NODE-REC-${rec.id}`;
       nodes.push({
-        id: recDateId,
-        label: rec.medicalData.documentType || `Study on ${rec.date}`,
+        id: recId,
+        label: rec.medicalData.documentType || `Visit ${rec.date}`,
         val: rec.date,
         type: "RECORD",
         sourceRecordId: rec.id
       });
-
-      // Connect Patient -> [has_record] -> Record Date Node
       edges.push({
         source: patientNodeId,
-        target: recDateId,
-        relationship: "HAS_RECORD"
+        target: recId,
+        relationship: "HAD_VISIT"
       });
+    });
 
-      // Connect diagnostic biomarkers findings
-      if (rec.medicalData.findings) {
-        rec.medicalData.findings.forEach((finding, fIdx) => {
-          const paramName = finding.parameter || "";
-          if (!paramName) return;
+    // Extract unique medical entities across records
+    const uniqueDiagnoses = new Set<string>();
+    const uniqueMeds = new Set<string>();
+    const uniqueFindings = new Set<string>();
 
-          const bioNodeId = `NODE-BIO-${paramName.replace(/\s+/g, "-")}`;
-          
-          if (!seenBiomarkers.has(bioNodeId)) {
-            nodes.push({
-              id: bioNodeId,
-              label: paramName,
-              val: `${finding.value} (${finding.status})`,
-              type: "BIOMARKER",
-              sourceRecordId: rec.id
-            });
-            seenBiomarkers.add(bioNodeId);
-          }
+    const medsMap: { [key: string]: { item: string; dosage?: string; purpose?: string } } = {};
+    const findingsMap: { [key: string]: { parameter: string; value: string; status: string } } = {};
 
-          // Edge: Record -> [measured] -> Biomarker Node
-          edges.push({
-            source: recDateId,
-            target: bioNodeId,
-            relationship: `MEASURED (${finding.value})`
-          });
-        });
-      }
-
-      // Connect impressions / diagnosed conditions
+    activeRecords.forEach(rec => {
       if (rec.medicalData.diagnoses) {
-        rec.medicalData.diagnoses.forEach((diag, dIdx) => {
-          const diagNodeId = `NODE-DIAG-${diag.replace(/\s+/g, "-")}`;
-          
-          if (!seenDiagnoses.has(diagNodeId)) {
-            nodes.push({
-              id: diagNodeId,
-              label: diag,
-              type: "DIAGNOSIS",
-              sourceRecordId: rec.id
-            });
-            seenDiagnoses.add(diagNodeId);
-          }
-
-          // Edge: Record -> [documents] -> Clinical Impression Node
-          edges.push({
-            source: recDateId,
-            target: diagNodeId,
-            relationship: "CONFIRMED_CASE"
-          });
-
-          // Edge from biomarkers to relevant diagnoses if they co-exist
-          if (rec.medicalData.findings) {
-            rec.medicalData.findings.forEach((f) => {
-              if (["HIGH", "LOW", "ABNORMAL"].includes((f.status || "").toUpperCase())) {
-                const bioNodeId = `NODE-BIO-${f.parameter.replace(/\s+/g, "-")}`;
-                edges.push({
-                  source: bioNodeId,
-                  target: diagNodeId,
-                  relationship: "INDICATES"
-                });
-              }
-            });
+        rec.medicalData.diagnoses.forEach(d => uniqueDiagnoses.add(d.trim()));
+      }
+      if (rec.medicalData.medicationsAndRecommendations) {
+        rec.medicalData.medicationsAndRecommendations.forEach(m => {
+          if (m.item) {
+            const medName = m.item.trim();
+            uniqueMeds.add(medName);
+            medsMap[medName] = {
+              item: medName,
+              dosage: m.dosageOrInstructions,
+              purpose: m.purpose
+            };
           }
         });
       }
-
-      // Connect therapeutic recommendations
-      if (rec.medicalData.medicationsAndRecommendations) {
-        rec.medicalData.medicationsAndRecommendations.forEach((med, mIdx) => {
-          const medName = med.item || "";
-          if (!medName) return;
-
-          const medNodeId = `NODE-MED-${medName.replace(/\s+/g, "-")}`;
-
-          if (!seenMedications.has(medNodeId)) {
-            nodes.push({
-              id: medNodeId,
-              label: medName,
-              val: med.dosageOrInstructions,
-              type: "MEDICATION",
-              sourceRecordId: rec.id
-            });
-            seenMedications.add(medNodeId);
+      if (rec.medicalData.findings) {
+        rec.medicalData.findings.forEach(f => {
+          if (f.parameter) {
+            const fName = f.parameter.trim();
+            uniqueFindings.add(fName);
+            findingsMap[fName] = {
+              parameter: fName,
+              value: f.value,
+              status: f.status || "NORMAL"
+            };
           }
-
-          // Edge: Record or Diagnosis -> [prescribed] -> Intervention Node
-          edges.push({
-            source: recDateId,
-            target: medNodeId,
-            relationship: "THERAPY_PLAN"
-          });
         });
       }
     });
+
+    // C. Diagnosis Nodes
+    uniqueDiagnoses.forEach(diag => {
+      const diagId = `NODE-DIAG-${diag.replace(/\s+/g, "-")}`;
+      nodes.push({
+        id: diagId,
+        label: diag,
+        type: "DIAGNOSIS"
+      });
+      edges.push({
+        source: patientNodeId,
+        target: diagId,
+        relationship: "DIAGNOSED_WITH"
+      });
+    });
+
+    // D. Conditional Follow-up Nodes (drugs / lab tests based on active clinical user role)
+    const showDrugs = expertise === "PHARMACIST" || expertise === "MD_PRACTITIONER" || expertise === "RESEARCHER";
+    const showLabs = expertise === "PATHOLOGIST" || expertise === "MD_PRACTITIONER" || expertise === "RESEARCHER";
+
+    if (showDrugs) {
+      uniqueMeds.forEach(med => {
+        const medId = `NODE-MED-${med.replace(/\s+/g, "-")}`;
+        const medInfo = medsMap[med];
+        nodes.push({
+          id: medId,
+          label: med,
+          val: medInfo.dosage,
+          type: "MEDICATION"
+        });
+
+        // Link diagnosis to medications
+        uniqueDiagnoses.forEach(diag => {
+          const diagId = `NODE-DIAG-${diag.replace(/\s+/g, "-")}`;
+          edges.push({
+            source: diagId,
+            target: medId,
+            relationship: "TREATMENT_DRUG"
+          });
+        });
+      });
+    }
+
+    if (showLabs) {
+      uniqueFindings.forEach(param => {
+        const bioId = `NODE-BIO-${param.replace(/\s+/g, "-")}`;
+        const fInfo = findingsMap[param];
+        nodes.push({
+          id: bioId,
+          label: param,
+          val: `${fInfo.value} (${fInfo.status})`,
+          type: "BIOMARKER"
+        });
+
+        // Link diagnosis to biomarkers
+        uniqueDiagnoses.forEach(diag => {
+          const diagId = `NODE-DIAG-${diag.replace(/\s+/g, "-")}`;
+          edges.push({
+            source: diagId,
+            target: bioId,
+            relationship: "EVALUATED_BY"
+          });
+        });
+      });
+    }
 
     return { nodes, edges };
-  }, [activeRecords, patientMeta]);
+  }, [activeRecords, patientMeta, expertise]);
 
-  // Layout Algorithm: Deterministic Orbital arrangement for stunning layout structure & clarity
+  // Layout Algorithm: Deterministic Layered Coordinates
   const arrangedNodes = useMemo(() => {
     const nodes = graphData.nodes;
-    const center = { x: 250, y: 190 }; // Root Patient Center
-
-    // Separate nodes by layers to assign orbits
-    const recordNodes = nodes.filter(n => n.type === "RECORD");
-    const biomarkerNodes = nodes.filter(n => n.type === "BIOMARKER");
-    const diagnosisNodes = nodes.filter(n => n.type === "DIAGNOSIS");
-    const medicationNodes = nodes.filter(n => n.type === "MEDICATION");
-
     const layoutMap: { [key: string]: { x: number; y: number } } = {};
 
-    // Patient Node (Root Center)
-    layoutMap["NODE-PATIENT"] = { x: center.x, y: center.y };
+    // Layer 0: Root Patient Node (Center top)
+    layoutMap["NODE-PATIENT"] = { x: 250, y: 35 };
 
-    // Orbit 1: Medical Records (Closer orbit, d = 75px)
-    recordNodes.forEach((n, idx) => {
-      const total = recordNodes.length;
-      const angle = total === 1 ? -Math.PI / 2 : (idx / total) * 2 * Math.PI - Math.PI / 2;
-      const d = 72;
-      layoutMap[n.id] = {
-        x: center.x + d * Math.cos(angle),
-        y: center.y + d * Math.sin(angle)
-      };
+    // Layer 1: Demographics and Visits/Records (y = 115)
+    layoutMap["NODE-DEMOGRAPHIC"] = { x: 130, y: 115 };
+
+    const recNodes = nodes.filter(n => n.type === "RECORD");
+    const totalRecs = recNodes.length;
+    recNodes.forEach((n, idx) => {
+      const xSpan = 200;
+      const xStart = 250;
+      const x = totalRecs <= 1 
+        ? 350 
+        : xStart + (idx / (totalRecs - 1)) * xSpan;
+      layoutMap[n.id] = { x, y: 115 };
     });
 
-    // Orbit 2: Biomarkers (Middle orbit, d = 145px)
-    biomarkerNodes.forEach((n, idx) => {
-      const total = biomarkerNodes.length;
-      const angle = (idx / total) * 2 * Math.PI;
-      const d = 138;
-      layoutMap[n.id] = {
-        x: center.x + d * Math.cos(angle),
-        y: center.y + d * Math.sin(angle)
-      };
+    // Layer 2: Diagnosis Nodes (y = 200)
+    const diagNodes = nodes.filter(n => n.type === "DIAGNOSIS");
+    const totalDiags = diagNodes.length;
+    diagNodes.forEach((n, idx) => {
+      const xSpan = 380;
+      const xStart = 250 - xSpan / 2;
+      const x = totalDiags <= 1 
+        ? 250 
+        : xStart + (idx / (totalDiags - 1)) * xSpan;
+      layoutMap[n.id] = { x, y: 200 };
     });
 
-    // Orbit 3: Diagnoses & Conditions (Outer orbit Left hemisphere, d = 210px)
-    diagnosisNodes.forEach((n, idx) => {
-      const total = diagnosisNodes.length;
-      const angle = Math.PI/2 + (idx / Math.max(1, total)) * Math.PI; // Arrange on Left-semi circle
-      const d = 205;
-      layoutMap[n.id] = {
-        x: center.x + d * Math.cos(angle),
-        y: center.y + d * Math.sin(angle)
-      };
+    // Layer 3: Follow-up Nodes (y = 285)
+    const followUpNodes = nodes.filter(n => n.type === "MEDICATION" || n.type === "BIOMARKER");
+    const totalFollowUp = followUpNodes.length;
+    followUpNodes.forEach((n, idx) => {
+      const xSpan = 420;
+      const xStart = 250 - xSpan / 2;
+      const x = totalFollowUp <= 1 
+        ? 250 
+        : xStart + (idx / (totalFollowUp - 1)) * xSpan;
+      const yOffset = idx % 2 === 0 ? 0 : 15;
+      layoutMap[n.id] = { x, y: 285 + yOffset };
     });
 
-    // Orbit 3: Therapeutics & Medications (Outer orbit Right hemisphere, d = 210px)
-    medicationNodes.forEach((n, idx) => {
-      const total = medicationNodes.length;
-      const angle = -Math.PI/2 + (idx / Math.max(1, total)) * Math.PI; // Arrange on Right-semi circle
-      const d = 205;
-      layoutMap[n.id] = {
-        x: center.x + d * Math.cos(angle),
-        y: center.y + d * Math.sin(angle)
-      };
+    // Fallback coordinates for any remaining nodes
+    nodes.forEach(n => {
+      if (!layoutMap[n.id]) {
+        layoutMap[n.id] = { x: 250, y: 150 };
+      }
     });
 
     return layoutMap;
-  }, [graphData, patientMeta]);
+  }, [graphData, expertise]);
 
-  // Determine active highlighted connections if user clicks on a particular node
+  // All constructed nodes are shown immediately in this reactive layout
+  const visibleNodes = useMemo(() => {
+    return graphData.nodes;
+  }, [graphData.nodes]);
+
+  // Active highlighted relationships when user selects a node
   const activeRelationships = useMemo(() => {
     if (!selectedNodeId) return null;
 
-    // Filter edges connected directly to this selected node
     const adjacentEdges = graphData.edges.filter(
       edge => edge.source === selectedNodeId || edge.target === selectedNodeId
     );
 
-    // Get all connected nodes
     const adjacentNodeIds = new Set<string>();
     adjacentNodeIds.add(selectedNodeId);
     adjacentEdges.forEach(e => {
@@ -394,7 +406,7 @@ export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalK
     };
   }, [selectedNodeId, graphData]);
 
-  // Handle click on node
+  // Handle click on node: Toggle selection
   const handleNodeClick = (id: string) => {
     setSelectedNodeId(prev => prev === id ? null : id);
   };
@@ -411,25 +423,40 @@ export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalK
         stroke = isSelected ? "stroke-emerald-400 stroke-[3]" : "stroke-stone-800";
         size = 22;
         break;
+      case "DEMOGRAPHIC":
+        fill = "fill-indigo-500";
+        stroke = isSelected ? "stroke-indigo-300 stroke-[2.5]" : "stroke-indigo-700";
+        size = 15;
+        break;
       case "RECORD":
         fill = "fill-emerald-600";
-        stroke = isSelected ? "stroke-emerald-400 stroke-[2.5]" : (expertise === "RESEARCHER" ? "stroke-emerald-400 stroke-2" : "stroke-emerald-700");
-        size = expertise === "RESEARCHER" ? 16 : 14;
+        stroke = isSelected ? "stroke-emerald-400 stroke-[2.5]" : "stroke-emerald-700";
+        size = 14;
         break;
       case "BIOMARKER":
         fill = "fill-sky-500";
-        stroke = isSelected ? "stroke-sky-300 stroke-[2.5]" : (expertise === "PATHOLOGIST" ? "stroke-sky-300 stroke-2 animate-pulse" : "stroke-sky-600");
-        size = expertise === "PATHOLOGIST" ? 13 : 11;
+        stroke = isSelected ? "stroke-sky-300 stroke-[2.5]" : "stroke-sky-600";
+        size = 12;
         break;
       case "DIAGNOSIS":
         fill = "fill-amber-500";
-        stroke = isSelected ? "stroke-amber-300 stroke-[2.5]" : (expertise === "MD_PRACTITIONER" ? "stroke-amber-300 stroke-2" : "stroke-amber-600");
-        size = expertise === "MD_PRACTITIONER" ? 14 : 12;
+        stroke = isSelected ? "stroke-amber-300 stroke-[2.5]" : "stroke-amber-600";
+        size = 13;
         break;
       case "MEDICATION":
         fill = "fill-purple-500";
-        stroke = isSelected ? "stroke-purple-300 stroke-[2.5]" : (expertise === "PHARMACIST" ? "stroke-purple-300 stroke-2" : "stroke-purple-600");
-        size = expertise === "PHARMACIST" ? 14 : 12;
+        stroke = isSelected ? "stroke-purple-300 stroke-[2.5]" : "stroke-purple-600";
+        size = 13;
+        break;
+      case "COUNT_RX":
+        fill = "fill-pink-500";
+        stroke = isSelected ? "stroke-pink-300 stroke-[2.5]" : "stroke-pink-600";
+        size = 14;
+        break;
+      case "COUNT_LAB":
+        fill = "fill-teal-500";
+        stroke = isSelected ? "stroke-teal-300 stroke-[2.5]" : "stroke-teal-600";
+        size = 14;
         break;
     }
 
@@ -441,9 +468,14 @@ export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalK
   };
 
   const filteredNodes = useMemo(() => {
-    if (activeFilterType === "ALL") return graphData.nodes;
-    return graphData.nodes.filter(n => n.type === activeFilterType);
-  }, [graphData, activeFilterType]);
+    if (activeFilterType === "ALL") return visibleNodes;
+    return visibleNodes.filter(n => n.type === activeFilterType);
+  }, [visibleNodes, activeFilterType]);
+
+  const visibleEdges = useMemo(() => {
+    const visibleIds = new Set(visibleNodes.map(n => n.id));
+    return graphData.edges.filter(e => visibleIds.has(e.source) && visibleIds.has(e.target));
+  }, [graphData.edges, visibleNodes]);
 
   const selectedNodeDetails = useMemo(() => {
     if (!selectedNodeId) return null;
@@ -451,55 +483,44 @@ export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalK
   }, [selectedNodeId, graphData]);
 
   return (
-    <div id="knowledge-graph-box" className="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm grid grid-cols-1 md:grid-cols-12">
+    <div id="knowledge-graph-box" className="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm grid grid-cols-1 md:grid-cols-12 animate-fadeIn">
       
-      {/* 1. SIDEBAR Controls & Cohort Registry (EHR Biobank Directory) */}
+      {/* 1. SIDEBAR Controls & Active Patient Profile */}
       <div className="md:col-span-4 p-5 border-b md:border-b-0 md:border-r border-stone-200 bg-stone-50/40 flex flex-col justify-between space-y-5">
         
         <div className="space-y-4">
           <div className="space-y-1">
             <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-stone-400 flex items-center gap-1.5">
-              <Database size={13} className="text-emerald-600" />
-              Patient Biobank Registry
+              <User size={13} className="text-emerald-600" />
+              Active Patient Profile
             </h4>
             <p className="text-[11px] text-stone-500 font-light">
-              Select patient metadata logs to map distinct dynamic health relation pathways in our federated schema.
+              Interactive relationship pathways mapped dynamically for the synchronized clinical dossier.
             </p>
           </div>
 
-          {/* Active Selector buttons */}
-          <div className="space-y-2">
-            {SIMULATED_PATIENTS.map((p) => {
-              const isSelected = selectedPatientId === p.id;
-              // Override active patient template labeled
-              const labelName = p.id === "active" ? patientMeta.name : p.name;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => {
-                    setSelectedPatientId(p.id);
-                    setSelectedNodeId(null);
-                  }}
-                  className={`w-full text-left p-2.5 rounded-xl border text-xs transition-all cursor-pointer ${
-                    isSelected
-                      ? "bg-white border-emerald-500 text-stone-950 shadow-[0_2px_8px_rgba(16,185,129,0.06)] ring-1 ring-emerald-500/30"
-                      : "bg-white/50 border-stone-200 text-stone-600 hover:border-stone-300"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold block truncate max-w-[190px]">
-                      {labelName}
-                    </span>
-                    {isSelected && (
-                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full shrink-0" />
-                    )}
-                  </div>
-                  <span className="block text-[10px] text-stone-400 font-light mt-0.5">
-                    {p.gender} • {p.facility}
-                  </span>
-                </button>
-              );
-            })}
+          {/* Active Patient Info Card */}
+          <div className="bg-white border border-stone-200 rounded-xl p-3.5 space-y-2 shadow-[0_2px_8px_rgba(0,0,0,0.015)]">
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full shrink-0" />
+              <span className="font-semibold text-xs text-stone-900 block truncate">
+                {patientMeta.name}
+              </span>
+            </div>
+            <div className="text-[10px] text-stone-500 space-y-1.5 font-light pt-0.5 border-t border-stone-100">
+              <p className="flex items-center justify-between">
+                <span className="font-medium text-stone-400 font-mono text-[9.5px]">GENDER</span>
+                <span className="text-stone-700 font-medium">{patientMeta.gender}</span>
+              </p>
+              <p className="flex items-center justify-between gap-4">
+                <span className="font-medium text-stone-400 font-mono text-[9.5px]">FACILITY</span>
+                <span className="text-stone-700 font-medium truncate max-w-[130px]">{patientMeta.facility}</span>
+              </p>
+              <p className="flex items-center justify-between">
+                <span className="font-medium text-stone-400 font-mono text-[9.5px]">STATUS</span>
+                <span className="text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100">{patientMeta.status}</span>
+              </p>
+            </div>
           </div>
 
           {/* Node Category Toggles */}
@@ -510,28 +531,35 @@ export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalK
             <div className="grid grid-cols-2 gap-1 font-mono text-[9px]">
               {[
                 { label: "Patient", type: "PATIENT", color: "bg-stone-900" },
-                { label: "Records", type: "RECORD", color: "bg-emerald-600" },
+                { label: "Demographics", type: "DEMOGRAPHIC", color: "bg-indigo-500" },
                 { label: "Biomarkers", type: "BIOMARKER", color: "bg-sky-500" },
                 { label: "Impressions", type: "DIAGNOSIS", color: "bg-amber-500" },
                 { label: "Therapeutics", type: "MEDICATION", color: "bg-purple-500" }
-              ].map((filter) => (
-                <button
-                  key={filter.type}
-                  onClick={() => setActiveFilterType(prev => prev === filter.type ? "ALL" : filter.type)}
-                  className={`px-2 py-1 border rounded-md flex items-center gap-1 cursor-pointer truncate ${
-                    activeFilterType === filter.type 
-                      ? "border-stone-900 bg-stone-100 font-semibold text-stone-950" 
-                      : "border-stone-200 bg-white text-stone-500 hover:border-stone-300"
-                  }`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${filter.color}`} />
-                  {filter.label}
-                </button>
-              ))}
+              ].map((filter) => {
+                // If it's a role that doesn't have certain types, hide filters
+                if (filter.type === "DEMOGRAPHIC" && expertise !== "PATIENT" && expertise !== "MD_PRACTITIONER") return null;
+                if (filter.type === "BIOMARKER" && expertise === "PHARMACIST") return null;
+                if (filter.type === "MEDICATION" && expertise === "PATHOLOGIST") return null;
+
+                return (
+                  <button
+                    key={filter.type}
+                    onClick={() => setActiveFilterType(prev => prev === filter.type ? "ALL" : filter.type)}
+                    className={`px-2 py-1 border rounded-md flex items-center gap-1 cursor-pointer truncate ${
+                      activeFilterType === filter.type 
+                        ? "border-stone-900 bg-stone-100 font-semibold text-stone-950" 
+                        : "border-stone-200 bg-white text-stone-500 hover:border-stone-300"
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${filter.color}`} />
+                    {filter.label}
+                  </button>
+                );
+              })}
               {activeFilterType !== "ALL" && (
                 <button
                   onClick={() => setActiveFilterType("ALL")}
-                  className="px-2 py-1 border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 rounded-md text-center cursor-pointer font-bold"
+                  className="px-2 py-1 border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 rounded-md text-center cursor-pointer font-bold col-span-2"
                 >
                   Clear filter
                 </button>
@@ -559,19 +587,22 @@ export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalK
               <div className="space-y-1">
                 <span className={`inline-block px-1.5 py-0.2 rounded text-[8.5px] font-mono font-bold uppercase tracking-wider ${
                   selectedNodeDetails.type === "PATIENT" ? "bg-stone-950 text-white" :
+                  selectedNodeDetails.type === "DEMOGRAPHIC" ? "bg-indigo-50 text-indigo-800 border border-indigo-150" :
                   selectedNodeDetails.type === "RECORD" ? "bg-emerald-50 text-emerald-800 border border-emerald-150" :
                   selectedNodeDetails.type === "BIOMARKER" ? "bg-sky-50 text-sky-800 border border-sky-150" :
                   selectedNodeDetails.type === "DIAGNOSIS" ? "bg-amber-50 text-amber-800 border border-amber-150" :
+                  selectedNodeDetails.type === "COUNT_RX" ? "bg-pink-50 text-pink-800 border border-pink-150" :
+                  selectedNodeDetails.type === "COUNT_LAB" ? "bg-teal-50 text-teal-800 border border-teal-150" :
                   "bg-purple-50 text-purple-800 border border-purple-150"
                 }`}>
-                  {selectedNodeDetails.type}
+                  {selectedNodeDetails.type.replace("_", " ")}
                 </span>
                 <p className="text-sm font-semibold text-stone-900 leading-tight">
                   {selectedNodeDetails.label}
                 </p>
                 {selectedNodeDetails.val && (
-                  <p className="text-xs font-mono text-stone-500 font-light truncate">
-                    Value/Metrics: {selectedNodeDetails.val}
+                  <p className="text-xs font-mono text-stone-500 font-light">
+                    {selectedNodeDetails.val}
                   </p>
                 )}
                 {selectedNodeDetails.date && (
@@ -581,7 +612,28 @@ export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalK
                 )}
               </div>
 
-              {activeRelationships && (
+              {/* VIEW GRAPH ON CLICK (Option to click to have graph for longitudinal changes) */}
+              {onViewTrend && selectedNodeDetails.type === "BIOMARKER" && (
+                <button
+                  onClick={() => onViewTrend(selectedNodeDetails.label)}
+                  className="w-full mt-2 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 shadow-sm cursor-pointer transition-all"
+                >
+                  <ChartIcon size={12} />
+                  View Longitudinal Trend
+                </button>
+              )}
+
+              {onViewTrend && selectedNodeDetails.type === "MEDICATION" && (
+                <button
+                  onClick={() => onViewTrend(`💊 ${selectedNodeDetails.label}`)}
+                  className="w-full mt-2 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 shadow-sm cursor-pointer transition-all"
+                >
+                  <Pill size={12} />
+                  View Refill Timeline
+                </button>
+              )}
+
+              {activeRelationships && activeRelationships.connectedEdges.length > 0 && (
                 <div className="pt-2 border-t border-stone-100 space-y-1">
                   <span className="text-[9px] font-mono text-stone-400">DIRECT RELATIONSHIPS ({activeRelationships.connectedEdges.length})</span>
                   <div className="space-y-1.5 max-h-[110px] overflow-y-auto">
@@ -611,7 +663,7 @@ export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalK
           ) : (
             <div className="text-center py-5 text-stone-400 text-xs font-light flex flex-col items-center justify-center space-y-1">
               <Network size={16} className="text-stone-300 stroke-[1.5]" />
-              <p>Select any node in the SVG canvas network diagram on the right to walk health pathways and relationship edges.</p>
+              <p>Click on any node in the canvas. Demographics and downstream clinical findings will cascade sequentially!</p>
             </div>
           )}
         </div>
@@ -630,7 +682,7 @@ export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalK
             </p>
             {expertise && (
               <span className="text-[8.5px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1 py-0.2 rounded">
-                {expertise}
+                {expertise === "PATIENT" ? "LAYMAN" : expertise.replace("_", " ")}
               </span>
             )}
           </div>
@@ -638,19 +690,19 @@ export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalK
             {patientMeta.name} Relations Network
           </h3>
           <p className="text-[9.5px] text-stone-400 font-mono font-light">
-            Nodes: {graphData.nodes.length} | Edges: {graphData.edges.length}
+            Nodes Visible: {visibleNodes.length} / {graphData.nodes.length} | Edges: {visibleEdges.length}
           </p>
           {expertise && (
             <div className="pt-1.5 mt-1 border-t border-stone-850 text-[9px] text-stone-400 font-sans leading-tight">
               <span className="font-semibold text-emerald-500 flex items-center gap-1">
-                <Sparkles size={8} /> Focus Folder Sync:
+                <Sparkles size={8} /> Layout Schema:
               </span>
               <p className="italic mt-0.5">
-                {expertise === "PATIENT" && "Layman translation & patient adherence ruleset triggered."}
-                {expertise === "MD_PRACTITIONER" && "Differential diagnostics & cardiovascular staging guidelines folder active."}
-                {expertise === "PHARMACIST" && "CYP metabolic path + pharmacokinetics folder active."}
-                {expertise === "PATHOLOGIST" && "Cell staining + fluid chemical thresholds folder active."}
-                {expertise === "RESEARCHER" && "Cohort phenotypic LOINC/SNOMED indexing folder active."}
+                {expertise === "PATIENT" && "Patient -> Demographic -> Symptoms/Diagnosis -> Rx/Lab counts."}
+                {expertise === "MD_PRACTITIONER" && "Patient -> Demographic -> Symptoms/Diagnosis -> Rx/Lab counts."}
+                {expertise === "PHARMACIST" && "Patient -> Disease/Diagnosis -> Drugs & Refills."}
+                {expertise === "PATHOLOGIST" && "Patient -> Disease/Diagnosis -> Lab Work Category."}
+                {expertise === "RESEARCHER" && "Cohort phenotypic LOINC/SNOMED indexing active."}
               </p>
             </div>
           )}
@@ -659,10 +711,34 @@ export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalK
         {/* Legend block overlay */}
         <div className="absolute bottom-4 left-4 z-10 bg-stone-900/80 backdrop-blur border border-stone-800 p-2.5 rounded-xl text-[9px] font-mono text-stone-400 flex flex-wrap gap-2 pointer-events-none shadow-sm max-w-[280px] sm:max-w-none">
           <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-white" /> Patient</div>
-          <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Records</div>
-          <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Biomarkers</div>
-          <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Impressions</div>
-          <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Therapeutics</div>
+          {(expertise === "PATIENT" || expertise === "MD_PRACTITIONER") && (
+            <>
+              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Demographics</div>
+              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Symptoms/Diagnosis</div>
+              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-pink-500" /> Prescriptions</div>
+              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-teal-500" /> Lab Tests</div>
+            </>
+          )}
+          {expertise === "PHARMACIST" && (
+            <>
+              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Disease</div>
+              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Drug</div>
+            </>
+          )}
+          {expertise === "PATHOLOGIST" && (
+            <>
+              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Disease</div>
+              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Lab Category</div>
+            </>
+          )}
+          {expertise === "RESEARCHER" && (
+            <>
+              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Records</div>
+              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Biomarkers</div>
+              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Impressions</div>
+              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Therapeutics</div>
+            </>
+          )}
         </div>
 
         {activeRecords.length === 0 ? (
@@ -686,7 +762,7 @@ export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalK
               xmlns="http://www.w3.org/2000/svg"
             >
               {/* SVG Edge connections Lines */}
-              {graphData.edges.map((edge, index) => {
+              {visibleEdges.map((edge, index) => {
                 const sourcePos = arrangedNodes[edge.source];
                 const targetPos = arrangedNodes[edge.target];
 
@@ -838,7 +914,7 @@ export default function ClinicalKnowledgeGraph({ records, expertise }: ClinicalK
 
             {/* Micro instruction badge overlay */}
             <div className="absolute right-4 top-4 bg-stone-900/40 backdrop-blur border border-stone-800 rounded-lg px-2 py-1 text-[8.5px] font-mono text-stone-400 font-light pointer-events-none">
-              Click node to trace direct edge walker paths
+              Click any node to expand clinical paths and trace details
             </div>
 
           </div>

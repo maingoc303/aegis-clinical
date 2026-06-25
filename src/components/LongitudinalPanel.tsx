@@ -25,6 +25,8 @@ interface LongitudinalPanelProps {
   onRemoveRecord: (id: string) => void;
   selectedModel: string;
   expertise?: string;
+  isNewPatient?: boolean;
+  activePatientId?: string | null;
 }
 
 // Simple and safe text-to-HTML parser to style markdown responses elegantly
@@ -66,7 +68,9 @@ export default function LongitudinalPanel({
   records,
   onRemoveRecord,
   selectedModel,
-  expertise
+  expertise,
+  isNewPatient = false,
+  activePatientId = null
 }: LongitudinalPanelProps) {
   const [activeTab, setActiveTab] = useState<"visualizer" | "report" | "graph">("visualizer");
   const [selectedParameter, setSelectedParameter] = useState<string>("");
@@ -75,26 +79,45 @@ export default function LongitudinalPanel({
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [activeDotsIndex, setActiveDotsIndex] = useState<number | null>(null);
 
+  // Graph tab only visible for existed patient
+  const showGraphTab = !!activePatientId && !isNewPatient;
+
+  // Fallback activeTab if graph is hidden
+  React.useEffect(() => {
+    if (!showGraphTab && activeTab === "graph") {
+      setActiveTab("visualizer");
+    }
+  }, [showGraphTab, activeTab]);
+
   // Chronological sorting (ascending by date)
   const sortedRecords = useMemo(() => {
     return [...records].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [records]);
 
-  // Scan all findings across historical records to find unique parameters and plot points
+  // Scan all findings and medications across historical records to find unique parameters and plot points
   const parameterHistory = useMemo(() => {
-    const paramMap: { [key: string]: Array<{ date: string; valueStr: string; numericValue: number | null; unit: string; status: string; notes?: string; recordId: string }> } = {};
+    const paramMap: { [key: string]: Array<{ 
+      date: string; 
+      valueStr: string; 
+      numericValue: number | null; 
+      unit: string; 
+      status: string; 
+      notes?: string; 
+      recordId: string;
+      isMedication?: boolean;
+      dosageOrInstructions?: string;
+      purpose?: string;
+    }> } = {};
 
     sortedRecords.forEach(rec => {
+      // 1. Process standard findings
       if (rec.medicalData.findings) {
         rec.medicalData.findings.forEach(finding => {
           const rawParam = finding.parameter || "";
           if (!rawParam) return;
 
-          // Normalize parameter name (e.g., lowercase trimming or standard names can map together, but keep casing for display)
-          // Find standard matches or exact match
           const paramName = rawParam.trim();
           
-          // Parse number & units
           let numericVal: number | null = null;
           let detectedUnit = "";
 
@@ -102,7 +125,6 @@ export default function LongitudinalPanel({
           const numMatch = valueStr.match(/([0-9]+(?:\.[0-9]+)?)/);
           if (numMatch) {
             numericVal = parseFloat(numMatch[1]);
-            // Extract remaining text as unit
             detectedUnit = valueStr.replace(numMatch[1], "").trim();
           }
 
@@ -117,7 +139,35 @@ export default function LongitudinalPanel({
             unit: detectedUnit,
             status: finding.status || "NORMAL",
             notes: finding.notes,
-            recordId: rec.id
+            recordId: rec.id,
+            isMedication: false
+          });
+        });
+      }
+
+      // 2. Process medications as fill events
+      if (rec.medicalData.medicationsAndRecommendations) {
+        rec.medicalData.medicationsAndRecommendations.forEach(med => {
+          const rawItem = med.item || "";
+          if (!rawItem) return;
+
+          const paramName = `💊 ${rawItem.trim()}`;
+
+          if (!paramMap[paramName]) {
+            paramMap[paramName] = [];
+          }
+
+          paramMap[paramName].push({
+            date: rec.date,
+            valueStr: med.dosageOrInstructions || "Prescribed/Filled",
+            numericValue: 1, // Constant value to render nicely in the timeline line
+            unit: "Fill",
+            status: "NORMAL",
+            notes: med.purpose,
+            recordId: rec.id,
+            isMedication: true,
+            dosageOrInstructions: med.dosageOrInstructions,
+            purpose: med.purpose
           });
         });
       }
@@ -385,15 +435,17 @@ export default function LongitudinalPanel({
                 >
                   Biomarker Trend Charts
                 </button>
-                <button
-                  onClick={() => setActiveTab("graph")}
-                  className={`px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1.5 ${
-                    activeTab === "graph" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
-                  }`}
-                >
-                  <Network size={12} className="text-emerald-600" />
-                  Clinical Knowledge Graph
-                </button>
+                {showGraphTab && (
+                  <button
+                    onClick={() => setActiveTab("graph")}
+                    className={`px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1.5 ${
+                      activeTab === "graph" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
+                    }`}
+                  >
+                    <Network size={12} className="text-emerald-600" />
+                    Clinical Knowledge Graph
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setActiveTab("report");
@@ -435,7 +487,7 @@ export default function LongitudinalPanel({
 
             {/* TAB CONTAINER */}
             <div className="flex-1 p-6">
-              {activeTab === "graph" ? (
+              {activeTab === "graph" && showGraphTab ? (
                 <div className="space-y-4 animate-fadeIn">
                   <div className="bg-emerald-50/40 rounded-xl border border-emerald-100 p-4 text-xs leading-relaxed text-stone-700 font-light flex items-start gap-3">
                     <Info size={16} className="text-emerald-700 shrink-0 mt-0.5" />
@@ -443,7 +495,15 @@ export default function LongitudinalPanel({
                       <strong className="font-semibold text-emerald-950">Patient Knowledge Graph Engine:</strong> This interactive visual schema structures dates, biomarker measurement statistics, diagnoses, and medical interventions. You can toggle between simulating full patient registers from research databases above or analyzing your active uploaded files.
                     </div>
                   </div>
-                  <ClinicalKnowledgeGraph records={records} expertise={expertise} />
+                  <ClinicalKnowledgeGraph 
+                    records={records} 
+                    expertise={expertise} 
+                    onViewTrend={(paramName) => {
+                      setSelectedParameter(paramName);
+                      setActiveTab("visualizer");
+                      setActiveDotsIndex(null);
+                    }}
+                  />
                 </div>
               ) : activeTab === "visualizer" ? (
                 <div className="space-y-6">
@@ -483,210 +543,270 @@ export default function LongitudinalPanel({
                     </div>
                   </div>
 
-                  {/* SVG Chart display */}
-                  {chartData ? (
-                    <div className="bg-stone-50/50 border border-stone-200 rounded-2xl p-5 space-y-4">
-                      
-                      {/* Chart metadata & header details */}
-                      <div className="flex items-center justify-between mb-2">
-                        <div>
-                          <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-stone-400">
-                            Active Trendline
-                          </h4>
-                          <p className="text-sm font-serif font-semibold text-stone-900">
-                            Chronology Map of {selectedParameter}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs font-mono text-stone-500">
-                            Detected range across day logs:
-                          </p>
-                          <p className="text-xs font-mono font-bold text-stone-900">
-                            {chartData.minVal} – {chartData.maxVal} {chartData.points[0]?.unit}
-                          </p>
-                        </div>
-                      </div>
+                  {chartData ? (() => {
+                    const isMedication = selectedParameter.startsWith("💊 ");
+                    const themeColor = isMedication ? "#8b5cf6" : "#059669";
+                    const pointColor = isMedication ? "#a78bfa" : "#10b981";
+                    const hoverColor = isMedication ? "#7c3aed" : "#047857";
+                    const gradId = isMedication ? "chart-area-grad-med" : "chart-area-grad";
 
-                      {/* SVG Canvas wrapper */}
-                      <div className="relative w-full aspect-[21/9] bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
+                    return (
+                      <div className="bg-stone-50/50 border border-stone-200 rounded-2xl p-5 space-y-4">
                         
-                        <svg className="w-full h-full p-4" viewBox="0 0 500 200" preserveAspectRatio="none">
-                          <defs>
-                            <linearGradient id="chart-area-grad" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#059669" stopOpacity="0.12" />
-                              <stop offset="100%" stopColor="#059669" stopOpacity="0.00" />
-                            </linearGradient>
-                          </defs>
-
-                          {/* Grid Lines */}
-                          <line x1="40" y1="20" x2="480" y2="20" stroke="#f5f5f4" strokeWidth="1" strokeDasharray="3 3" />
-                          <line x1="40" y1="65" x2="480" y2="65" stroke="#f5f5f4" strokeWidth="1" strokeDasharray="3 3" />
-                          <line x1="40" y1="110" x2="480" y2="110" stroke="#f5f5f4" strokeWidth="1" strokeDasharray="3 3" />
-                          <line x1="40" y1="155" x2="480" y2="155" stroke="#f5f5f4" strokeWidth="1" strokeDasharray="3 3" />
-                          
-                          {/* Y-Axis tick descriptors (left aligned) */}
-                          <text x="35" y="24" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">
-                            {chartData.yMax.toFixed(1)}
-                          </text>
-                          <text x="35" y="90" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">
-                            {((chartData.yMax + chartData.yMin) / 2).toFixed(1)}
-                          </text>
-                          <text x="35" y="157" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">
-                            {chartData.yMin.toFixed(1)}
-                          </text>
-
-                          {/* Render line */}
-                          {chartData.points.length > 0 && (() => {
-                            const paddingLeft = 60;
-                            const paddingRight = 440;
-                            const chartWidth = paddingRight - paddingLeft;
-                            const ySpan = chartData.yMax - chartData.yMin;
-
-                            const getCoords = (index: number, val: number) => {
-                              const totalPoints = chartData.points.length;
-                              const x = totalPoints <= 1 
-                                ? paddingLeft + chartWidth / 2 
-                                : paddingLeft + (index / (totalPoints - 1)) * chartWidth;
-                              
-                              // Invert Y mapping context for SVG
-                              const percentage = ySpan === 0 ? 0.5 : (val - chartData.yMin) / ySpan;
-                              const y = 155 - percentage * 135; 
-                              return { x, y };
-                            };
-
-                            // Path builder
-                            let pathString = "";
-                            let areaPathString = "";
-                            
-                            chartData.points.forEach((pt, idx) => {
-                              const { x, y } = getCoords(idx, pt.numericValue as number);
-                              if (idx === 0) {
-                                pathString += `M ${x} ${y}`;
-                                areaPathString += `M ${x} 155 L ${x} ${y}`;
-                              } else {
-                                pathString += ` L ${x} ${y}`;
-                                areaPathString += ` L ${x} ${y}`;
+                        {/* Chart metadata & header details */}
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-stone-400">
+                              {isMedication ? "Medication Timeline" : "Active Trendline"}
+                            </h4>
+                            <p className="text-sm font-serif font-semibold text-stone-900">
+                              {isMedication ? `Refill Map of ${selectedParameter}` : `Chronology Map of ${selectedParameter}`}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-mono text-stone-500">
+                              {isMedication ? "Fills count:" : "Detected range across day logs:"}
+                            </p>
+                            <p className="text-xs font-mono font-bold text-stone-900">
+                              {isMedication 
+                                ? `${chartData.points.length} Refills Recorded`
+                                : `${chartData.minVal} – ${chartData.maxVal} ${chartData.points[0]?.unit || ""}`
                               }
-
-                              if (idx === chartData.points.length - 1) {
-                                areaPathString += ` L ${x} 155 Z`;
-                              }
-                            });
-
-                            return (
-                              <>
-                                {/* Fill gradient Area */}
-                                {chartData.points.length > 1 && (
-                                  <path d={areaPathString} fill="url(#chart-area-grad)" />
-                                )}
-
-                                {/* Line stroke */}
-                                <path 
-                                  d={pathString} 
-                                  fill="none" 
-                                  stroke="#059669" 
-                                  strokeWidth="2.5" 
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-
-                                {/* Interactive hover points dots */}
-                                {chartData.points.map((pt, idx) => {
-                                  const { x, y } = getCoords(idx, pt.numericValue as number);
-                                  const isActive = activeDotsIndex === idx;
-                                  return (
-                                    <g key={idx} className="cursor-pointer group/dot">
-                                      <circle 
-                                        cx={x} 
-                                        cy={y} 
-                                        r={isActive ? "6" : "4.5"} 
-                                        fill={isActive ? "#047857" : "#10b981"} 
-                                        stroke="#ffffff" 
-                                        strokeWidth={isActive ? "2" : "1.5"}
-                                        onClick={() => setActiveDotsIndex(idx)}
-                                        onMouseEnter={() => setActiveDotsIndex(idx)}
-                                        style={{ transition: "all 0.15s ease-out" }}
-                                      />
-                                      <circle 
-                                        cx={x} 
-                                        cy={y} 
-                                        r="12" 
-                                        fill="transparent" 
-                                        onClick={() => setActiveDotsIndex(idx)}
-                                        onMouseEnter={() => setActiveDotsIndex(idx)}
-                                      />
-                                    </g>
-                                  );
-                                })}
-                              </>
-                            );
-                          })()}
-                        </svg>
-
-                        {/* Chart Day/Collection-Date labels at the bottom */}
-                        <div className="absolute bottom-1.5 left-0 right-0 px-4 pl-14 flex justify-between text-[8px] font-mono text-stone-400">
-                          {chartData.points.map((pt, idx) => {
-                            const labelDate = new Date(pt.date).toLocaleDateString("en-US", {
-                              month: "2-digit",
-                              day: "2-digit"
-                            });
-                            return (
-                              <span key={idx} className="text-center w-8 shrink-0">
-                                {labelDate}
-                              </span>
-                            );
-                          })}
+                            </p>
+                          </div>
                         </div>
-                      </div>
 
-                      {/* Dot details Tooltip display */}
-                      <div className="bg-white border border-stone-200.5 rounded-xl p-4 min-h-[72px] flex items-center justify-between">
-                        {activeDotsIndex !== null && chartData.points[activeDotsIndex] ? (() => {
-                          const activePt = chartData.points[activeDotsIndex];
-                          const flagStatusColor = getStatusColorClass(activePt.status);
-                          return (
-                            <div className="w-full flex items-start justify-between gap-4 animate-fadeIn">
-                              <div className="space-y-1">
-                                <p className="text-[10px] font-mono text-stone-400">
-                                  Metric Point – {new Date(activePt.date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                                </p>
-                                <div className="flex items-center gap-2">
-                                  <h5 className="text-xs font-semibold text-stone-900">
-                                    {selectedParameter}:
-                                  </h5>
-                                  <p className="text-sm font-mono font-bold text-stone-950">
-                                    {activePt.valueStr}
-                                  </p>
-                                  <span className={`text-[8.5px] font-mono font-bold px-1.5 py-0.2 border rounded ${flagStatusColor}`}>
-                                    {activePt.status}
-                                  </span>
+                        {/* SVG Canvas wrapper */}
+                        <div className="relative w-full aspect-[21/9] bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
+                          
+                          <svg className="w-full h-full p-4" viewBox="0 0 500 200" preserveAspectRatio="none">
+                            <defs>
+                              <linearGradient id="chart-area-grad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#059669" stopOpacity="0.12" />
+                                <stop offset="100%" stopColor="#059669" stopOpacity="0.00" />
+                              </linearGradient>
+                              <linearGradient id="chart-area-grad-med" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.12" />
+                                <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.00" />
+                              </linearGradient>
+                            </defs>
+
+                            {/* Grid Lines */}
+                            <line x1="40" y1="20" x2="480" y2="20" stroke="#f5f5f4" strokeWidth="1" strokeDasharray="3 3" />
+                            <line x1="40" y1="65" x2="480" y2="65" stroke="#f5f5f4" strokeWidth="1" strokeDasharray="3 3" />
+                            <line x1="40" y1="110" x2="480" y2="110" stroke="#f5f5f4" strokeWidth="1" strokeDasharray="3 3" />
+                            <line x1="40" y1="155" x2="480" y2="155" stroke="#f5f5f4" strokeWidth="1" strokeDasharray="3 3" />
+                            
+                            {/* Y-Axis tick descriptors */}
+                            {isMedication ? (
+                              <>
+                                <text x="35" y="24" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">Prescribed</text>
+                                <text x="35" y="90" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">Filled</text>
+                                <text x="35" y="157" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">Active</text>
+                              </>
+                            ) : (
+                              <>
+                                <text x="35" y="24" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">
+                                  {chartData.yMax.toFixed(1)}
+                                </text>
+                                <text x="35" y="90" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">
+                                  {((chartData.yMax + chartData.yMin) / 2).toFixed(1)}
+                                </text>
+                                <text x="35" y="157" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">
+                                  {chartData.yMin.toFixed(1)}
+                                </text>
+                              </>
+                            )}
+
+                            {/* Render line */}
+                            {chartData.points.length > 0 && (() => {
+                              const paddingLeft = 60;
+                              const paddingRight = 440;
+                              const chartWidth = paddingRight - paddingLeft;
+                              const ySpan = chartData.yMax - chartData.yMin;
+
+                              const getCoords = (index: number, val: number) => {
+                                const totalPoints = chartData.points.length;
+                                const x = totalPoints <= 1 
+                                  ? paddingLeft + chartWidth / 2 
+                                  : paddingLeft + (index / (totalPoints - 1)) * chartWidth;
+                                
+                                // Invert Y mapping context for SVG
+                                const percentage = ySpan === 0 ? 0.5 : (val - chartData.yMin) / ySpan;
+                                const y = isMedication ? 90 : (155 - percentage * 135); 
+                                return { x, y };
+                              };
+
+                              // Path builder
+                              let pathString = "";
+                              let areaPathString = "";
+                              
+                              chartData.points.forEach((pt, idx) => {
+                                const { x, y } = getCoords(idx, pt.numericValue as number);
+                                if (idx === 0) {
+                                  pathString += `M ${x} ${y}`;
+                                  areaPathString += `M ${x} 155 L ${x} ${y}`;
+                                } else {
+                                  pathString += ` L ${x} ${y}`;
+                                  areaPathString += ` L ${x} ${y}`;
+                                }
+
+                                if (idx === chartData.points.length - 1) {
+                                  areaPathString += ` L ${x} 155 Z`;
+                                }
+                              });
+
+                              return (
+                                <>
+                                  {/* Fill gradient Area */}
+                                  {chartData.points.length > 1 && (
+                                    <path d={areaPathString} fill={`url(#${gradId})`} />
+                                  )}
+
+                                  {/* Line stroke */}
+                                  <path 
+                                    d={pathString} 
+                                    fill="none" 
+                                    stroke={themeColor} 
+                                    strokeWidth="2.5" 
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeDasharray={isMedication ? "5 5" : "0"}
+                                  />
+
+                                  {/* Interactive hover points dots */}
+                                  {chartData.points.map((pt, idx) => {
+                                    const { x, y } = getCoords(idx, pt.numericValue as number);
+                                    const isActive = activeDotsIndex === idx;
+                                    return (
+                                      <g key={idx} className="cursor-pointer group/dot">
+                                        <circle 
+                                          cx={x} 
+                                          cy={y} 
+                                          r={isActive ? "6" : "4.5"} 
+                                          fill={isActive ? hoverColor : pointColor} 
+                                          stroke="#ffffff" 
+                                          strokeWidth={isActive ? "2" : "1.5"}
+                                          onClick={() => setActiveDotsIndex(idx)}
+                                          onMouseEnter={() => setActiveDotsIndex(idx)}
+                                          style={{ transition: "all 0.15s ease-out" }}
+                                        />
+                                        <circle 
+                                          cx={x} 
+                                          cy={y} 
+                                          r="12" 
+                                          fill="transparent" 
+                                          onClick={() => setActiveDotsIndex(idx)}
+                                          onMouseEnter={() => setActiveDotsIndex(idx)}
+                                        />
+                                      </g>
+                                    );
+                                  })}
+                                </>
+                              );
+                            })()}
+                          </svg>
+
+                          {/* Chart Day/Collection-Date labels at the bottom */}
+                          <div className="absolute bottom-1.5 left-0 right-0 px-4 pl-14 flex justify-between text-[8px] font-mono text-stone-400">
+                            {chartData.points.map((pt, idx) => {
+                              const labelDate = new Date(pt.date).toLocaleDateString("en-US", {
+                                month: "2-digit",
+                                day: "2-digit"
+                              });
+                              return (
+                                <span key={idx} className="text-center w-8 shrink-0">
+                                  {labelDate}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Dot details Tooltip display */}
+                        <div className="bg-white border border-stone-200.5 rounded-xl p-4 min-h-[72px] flex items-center justify-between">
+                          {activeDotsIndex !== null && chartData.points[activeDotsIndex] ? (() => {
+                            const activePt = chartData.points[activeDotsIndex];
+                            const flagStatusColor = getStatusColorClass(activePt.status);
+                            
+                            if (isMedication) {
+                              return (
+                                <div className="w-full flex items-start justify-between gap-4 animate-fadeIn">
+                                  <div className="space-y-1">
+                                    <p className="text-[10px] font-mono text-stone-400">
+                                      Medication Refill Point – {new Date(activePt.date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                                    </p>
+                                    <div className="flex items-center gap-2">
+                                      <h5 className="text-xs font-semibold text-stone-900">
+                                        {selectedParameter}:
+                                      </h5>
+                                      <p className="text-sm font-mono font-bold text-purple-700">
+                                        {activePt.valueStr}
+                                      </p>
+                                    </div>
+                                    {activePt.notes && (
+                                      <p className="text-xs text-stone-500 font-light italic">
+                                        Clinical Purpose: {activePt.notes}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="text-right whitespace-nowrap bg-purple-50 border border-purple-100 p-2 rounded-lg">
+                                    <p className="text-[9px] font-mono text-purple-500">Refill Status</p>
+                                    <p className="text-xs font-mono font-bold text-purple-700">
+                                      Filled & Synchronized
+                                    </p>
+                                  </div>
                                 </div>
-                                {activePt.notes && (
-                                  <p className="text-xs text-stone-500 font-light italic">
-                                    Notes: {activePt.notes}
+                              );
+                            }
+
+                            return (
+                              <div className="w-full flex items-start justify-between gap-4 animate-fadeIn">
+                                <div className="space-y-1">
+                                  <p className="text-[10px] font-mono text-stone-400">
+                                    Metric Point – {new Date(activePt.date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                                   </p>
+                                  <div className="flex items-center gap-2">
+                                    <h5 className="text-xs font-semibold text-stone-900">
+                                      {selectedParameter}:
+                                    </h5>
+                                    <p className="text-sm font-mono font-bold text-stone-950">
+                                      {activePt.valueStr}
+                                    </p>
+                                    <span className={`text-[8.5px] font-mono font-bold px-1.5 py-0.2 border rounded ${flagStatusColor}`}>
+                                      {activePt.status}
+                                    </span>
+                                  </div>
+                                  {activePt.notes && (
+                                    <p className="text-xs text-stone-500 font-light italic">
+                                      Notes: {activePt.notes}
+                                    </p>
+                                  )}
+                                </div>
+                                {(activePt as any).referenceRange && (
+                                  <div className="text-right whitespace-nowrap bg-stone-50 border border-stone-100 p-2 rounded-lg">
+                                    <p className="text-[9px] font-mono text-stone-400">Normal Range</p>
+                                    <p className="text-xs font-mono font-medium text-stone-900">
+                                      {(activePt as any).referenceRange}
+                                    </p>
+                                  </div>
                                 )}
                               </div>
-                              {activePt.referenceRange && (
-                                <div className="text-right whitespace-nowrap bg-stone-50 border border-stone-100 p-2 rounded-lg">
-                                  <p className="text-[9px] font-mono text-stone-400">Normal Range</p>
-                                  <p className="text-xs font-mono font-medium text-stone-900">
-                                    {activePt.referenceRange}
-                                  </p>
-                                </div>
-                              )}
+                            );
+                          })() : (
+                            <div className="w-full text-center py-2 text-stone-400 text-xs font-light flex items-center justify-center gap-2">
+                              <Activity size={14} className="text-emerald-500" />
+                              {isMedication 
+                                ? "Hover over or click a point on the refill timeline to interpret dosage, refills, and clinical purpose."
+                                : "Hover over or click a point on the trendline graph to interpret individual test results."
+                              }
                             </div>
-                          );
-                        })() : (
-                          <div className="w-full text-center py-2 text-stone-400 text-xs font-light flex items-center justify-center gap-2">
-                            <Activity size={14} className="text-emerald-500" />
-                            Hover over or click a timeline point on the trendline graph to interpret individual test results.
-                          </div>
-                        )}
-                      </div>
+                          )}
+                        </div>
 
-                    </div>
-                  ) : (
+                      </div>
+                    );
+                  })() : (
                     <div className="bg-stone-50 border border-stone-150 rounded-xl p-8 text-center flex flex-col items-center justify-center space-y-2.5">
                       <Clock size={20} className="text-stone-400" />
                       <div>

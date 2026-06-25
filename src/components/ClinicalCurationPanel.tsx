@@ -215,50 +215,6 @@ export default function ClinicalCurationPanel({
         </div>
       )}
 
-      {/* Select Expert Persona */}
-      <div className="space-y-3">
-        <label className="text-xs font-mono font-semibold text-stone-600 uppercase tracking-wider block">
-          Select Expert Persona
-        </label>
-        
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3.5">
-          {EXPERTISE_PROFILES.map((profile) => {
-            const isSelected = currentExpertise === profile.id;
-            return (
-              <button
-                key={profile.id}
-                onClick={() => handleProfileSelect(profile.id)}
-                className={`text-left p-3.5 rounded-xl border transition-all flex flex-col justify-between h-28 cursor-pointer relative group ${
-                  isSelected
-                    ? "bg-stone-950 border-stone-950 text-white shadow-md scale-[0.985]"
-                    : "bg-stone-50/30 border-stone-200 hover:border-stone-400 text-stone-800"
-                }`}
-              >
-                <div>
-                  <span className="text-xs select-none block mb-1">
-                    {profile.badge.split(" ")[0]}
-                  </span>
-                  <h4 className="font-sans text-xs font-bold leading-tight uppercase tracking-wide">
-                    {profile.name.replace(/Expertise|Expert|Advocate|Practitioner/g, "").trim()}
-                  </h4>
-                  <p className={`text-[10px] mt-1.5 leading-snug line-clamp-2 ${
-                    isSelected ? "text-stone-300 font-light" : "text-stone-400 font-light"
-                  }`}>
-                    {profile.description}
-                  </p>
-                </div>
-
-                {isSelected && (
-                  <span className="absolute bottom-3 right-3 p-0.5 bg-emerald-500 text-white rounded-full">
-                    <Check size={10} className="stroke-[3.5]" />
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Clinical RAG Guideline Folders */}
       {currentExpertise !== "PATIENT" && (
         <div className="bg-stone-50/50 border border-stone-250 rounded-xl p-4.5 space-y-4">

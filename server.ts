@@ -143,35 +143,76 @@ async function initializeDatabase() {
   }
 }
 
-// Security Anonymization Policy: Mask patient id and names for secondary users (e.g. PHARMACIST, RESEARCHER)
+// Security Anonymization Policy: Mask patient id and names for secondary users (e.g. PHARMACIST, PATHOLOGIST, RESEARCHER)
 function applySecurityPolicy(patientData: any, expertise: string) {
-  const isPrimary = expertise === "MD_PRACTITIONER" || expertise === "PATHOLOGIST" || expertise === "PATIENT";
-  if (isPrimary) {
+  // Only MD_PRACTITIONER and PATIENT see full unmasked identifying details.
+  // PATHOLOGIST, PHARMACIST, and RESEARCHER must have personal identifying information masked.
+  const isFullyUnmasked = expertise === "MD_PRACTITIONER" || expertise === "PATIENT";
+
+  if (isFullyUnmasked) {
     return patientData;
   }
 
-  // Secondary user access control: Clone and mask sensitive details
+  // Clone to safely mutate according to access control boundaries
   const cloned = JSON.parse(JSON.stringify(patientData));
   const rawId = cloned.id;
   const maskedId = rawId ? `${rawId.substring(0, Math.min(rawId.length, 4))}****` : "ANONYMOUS";
-  
+
+  // Mask patient core biographical profile
   cloned.id = maskedId;
   cloned.name = "Patient [ANONYMOUS COHORT]";
   cloned.birth = "REDACTED";
-  
+  cloned.gender = "REDACTED";
+  cloned.facility = "REDACTED";
+
   if (Array.isArray(cloned.records)) {
     cloned.records = cloned.records.map((rec: any) => {
       if (rec.medicalData) {
-        rec.medicalData = {
-          ...rec.medicalData,
-          patientName: "Patient [ANONYMOUS]",
-          patientId: maskedId,
-          summary: rec.medicalData.summary ? rec.medicalData.summary.replace(new RegExp(rawId, "g"), maskedId) : ""
-        };
+        const rawMedical = rec.medicalData;
+
+        if (expertise === "PHARMACIST") {
+          // Pharmacist: ONLY info related to drug/medication (prescribed, bought, dose) is visible.
+          // Hide findings (lab tests), diagnoses (diseases), summary, imageObservations, and criticalAlerts.
+          rec.medicalData = {
+            patientName: "Patient [ANONYMOUS]",
+            patientId: maskedId,
+            documentType: "Pharmacotherapy Summary Only",
+            documentDate: rawMedical.documentDate,
+            summary: "Restricted View: Summary details omitted for Pharmacist privacy compliance.",
+            findings: [], // Omitted
+            diagnoses: [], // Omitted
+            medicationsAndRecommendations: rawMedical.medicationsAndRecommendations || [],
+            criticalAlerts: [] // Omitted
+          };
+        } else if (expertise === "PATHOLOGIST") {
+          // Pathologist: relevant lab tests (findings) as well as disease/suspected disease (diagnoses) visible but NOT personal info.
+          rec.medicalData = {
+            ...rawMedical,
+            patientName: "Patient [ANONYMOUS]",
+            patientId: maskedId,
+            // Keep lab tests (findings) and diagnoses
+            findings: rawMedical.findings || [],
+            diagnoses: rawMedical.diagnoses || [],
+            medicationsAndRecommendations: [], // Pathologists do not need treatment medication lists
+            summary: rawMedical.summary ? rawMedical.summary.replace(new RegExp(rawId, "g"), maskedId) : ""
+          };
+        } else if (expertise === "RESEARCHER") {
+          // Medical Researcher: Mask personal info. Can query patient/cohort.
+          rec.medicalData = {
+            ...rawMedical,
+            patientName: "Patient [ANONYMOUS]",
+            patientId: maskedId,
+            findings: rawMedical.findings || [],
+            diagnoses: rawMedical.diagnoses || [],
+            medicationsAndRecommendations: rawMedical.medicationsAndRecommendations || [],
+            summary: "Restricted View: Detailed case summary masked for researcher privacy compliance."
+          };
+        }
       }
       return rec;
     });
   }
+
   return cloned;
 }
 
@@ -246,6 +287,124 @@ async function startServer() {
     } catch (e: any) {
       console.error("Failed to fetch patients list:", e);
       res.status(500).json({ error: "Failed to fetch patients database: " + e.message });
+    }
+  });
+
+  // Researcher cohort criteria querying endpoint
+  app.post("/api/researcher/cohort-query", async (req, res) => {
+    try {
+      const { query, model } = req.body;
+      if (!query || typeof query !== "string") {
+        return res.status(400).json({ error: "Missing required 'query' parameter." });
+      }
+
+      await initializeDatabase();
+      const content = await fsPromises.readFile(dbPath, "utf-8");
+      const db = JSON.parse(content);
+
+      // Prepare an anonymized, minimal dataset for Gemini to analyze safely
+      const databaseSummary = Object.values(db).map((p: any) => {
+        const allDiagnoses: string[] = [];
+        const allFindings: string[] = [];
+        let age = "Unknown";
+        let gender = p.gender || "Unknown";
+
+        if (p.records && Array.isArray(p.records)) {
+          p.records.forEach((rec: any) => {
+            if (rec.medicalData) {
+              if (rec.medicalData.patientAge) age = rec.medicalData.patientAge;
+              if (rec.medicalData.patientGender) gender = rec.medicalData.patientGender;
+              if (Array.isArray(rec.medicalData.diagnoses)) {
+                rec.medicalData.diagnoses.forEach((d: string) => allDiagnoses.push(d));
+              }
+              if (Array.isArray(rec.medicalData.findings)) {
+                rec.medicalData.findings.forEach((f: any) => {
+                  allFindings.push(`${f.parameter}: ${f.value} (${f.status})`);
+                });
+              }
+            }
+          });
+        }
+
+        return {
+          id: p.id,
+          gender,
+          age,
+          diagnoses: Array.from(new Set(allDiagnoses)),
+          findings: Array.from(new Set(allFindings)),
+        };
+      });
+
+      const selectedModel = model || "gemini-3.5-flash";
+      const ai = getGeminiClient();
+
+      const systemInstruction = `You are a professional cohort screening system. Your job is to extract inclusion and exclusion criteria from a researcher's text query, and identify matching patient IDs from the provided database list.
+      
+      Do semantic alignment:
+      - If the user specifies "high blood pressure", match with diagnoses like "Arterial Hypertension".
+      - If the user specifies "heart failure", match with findings like "LVEF: low" or diagnoses like "Systolic Dysfunction" or "Ischemic Heart Stress Profile".
+      - Support age filters (e.g., "over 60" matches if age is a number > 60).
+      
+      Your output MUST strictly be a JSON object with the exact keys:
+      {
+        "inclusion": ["list of extracted inclusion criteria tags/terms"],
+        "exclusion": ["list of extracted exclusion criteria tags/terms"],
+        "matchedPatientIds": ["list of matched patient IDs that fit inclusion criteria and do not violate exclusion criteria"],
+        "explanation": "A professional 2-3 sentence clinical explanation of the cohort search results, summarizing the population matched."
+      }`;
+
+      const prompt = `Researcher Query: "${query}"\n\nAnonymized Patient Database:\n${JSON.stringify(databaseSummary, null, 2)}`;
+
+      const response = await ai.models.generateContent({
+        model: selectedModel,
+        contents: prompt,
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              inclusion: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              exclusion: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              matchedPatientIds: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              explanation: { type: Type.STRING }
+            },
+            required: ["inclusion", "exclusion", "matchedPatientIds", "explanation"]
+          }
+        }
+      });
+
+      const textResult = response.text;
+      if (!textResult) {
+        throw new Error("No response from cohort screening model.");
+      }
+
+      const parsed = JSON.parse(textResult.trim());
+      
+      // Filter matching secure patient objects from DB
+      const matchedPatients = Object.values(db)
+        .filter((p: any) => parsed.matchedPatientIds.includes(p.id))
+        .map((p: any) => applySecurityPolicy(p, "RESEARCHER"));
+
+      res.json({
+        success: true,
+        inclusion: parsed.inclusion,
+        exclusion: parsed.exclusion,
+        explanation: parsed.explanation,
+        matchedPatients
+      });
+    } catch (e: any) {
+      console.error("Cohort query endpoint failed:", e);
+      res.status(500).json({ error: "Failed to process cohort query: " + e.message });
     }
   });
 

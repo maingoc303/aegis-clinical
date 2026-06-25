@@ -1,13 +1,14 @@
 import React, { useState } from "react";
-import { Activity, ShieldAlert, BookOpen, Clock, HeartHandshake, Cpu } from "lucide-react";
+import { Activity, ShieldAlert, BookOpen, Clock, HeartHandshake, Cpu, LogOut } from "lucide-react";
 import UploadZone from "./components/UploadZone";
 import DossierDisplay from "./components/DossierDisplay";
 import ChatPanel from "./components/ChatPanel";
 import LongitudinalPanel from "./components/LongitudinalPanel";
-import { MedicalData, UploadedFileState, HistoricalRecord } from "./types";
+import { MedicalData, UploadedFileState, HistoricalRecord, ChatMessage } from "./types";
 import RegulatoryConsentModal from "./components/RegulatoryConsentModal";
 import ClinicalCurationPanel from "./components/ClinicalCurationPanel";
 import PatientDatabaseConsole from "./components/PatientDatabaseConsole";
+import SummaryReportModal from "./components/SummaryReportModal";
 
 export default function App() {
   const [medicalData, setMedicalData] = useState<MedicalData | null>(null);
@@ -22,9 +23,9 @@ export default function App() {
   // Expert curation and clinical skills folder guidance
   const [clinicalExpertise, setClinicalExpertise] = useState<string>(() => {
     try {
-      return localStorage.getItem("aegis_clinical_expertise") || "PATIENT";
+      return localStorage.getItem("aegis_clinical_expertise") || "";
     } catch {
-      return "PATIENT";
+      return "";
     }
   });
 
@@ -50,6 +51,16 @@ export default function App() {
     try {
       localStorage.setItem("aegis_clinical_expertise", roleId);
     } catch {}
+
+    const defaultMap: { [key: string]: string[] } = {
+      PATIENT: ["patient_care.md"],
+      MD_PRACTITIONER: ["differential_diagnostics.md", "pharmacology.md"],
+      PHARMACIST: ["pharmacology.md", "differential_diagnostics.md"],
+      PATHOLOGIST: ["laboratory_pathology.md", "cohort_statistics.md"],
+      RESEARCHER: ["cohort_statistics.md", "laboratory_pathology.md"],
+    };
+    const defaultFiles = defaultMap[roleId] || [];
+    handleActiveSkillsChange(defaultFiles);
   };
 
   const handleGuidanceChange = (val: string) => {
@@ -91,6 +102,53 @@ export default function App() {
 
   // Active patient tracking state
   const [activePatientId, setActivePatientId] = useState<string | null>(null);
+  const [isNewPatient, setIsNewPatient] = useState<boolean>(false);
+
+  // Summary Report & Session Logout states
+  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState<boolean>(false);
+  const [sessionKey, setSessionKey] = useState<number>(0);
+
+  const handleConfirmLogout = async (saveBeforeLogout = false) => {
+    if (saveBeforeLogout && medicalData && activePatientId) {
+      let chatHistory: ChatMessage[] | undefined = undefined;
+      try {
+        const savedChat = localStorage.getItem("aegis_current_chat");
+        if (savedChat) {
+          chatHistory = JSON.parse(savedChat).filter((m: ChatMessage) => m.id !== "welcome");
+        }
+      } catch (e) {
+        console.error("Error reading chat history on logout:", e);
+      }
+
+      const newRecord: HistoricalRecord = {
+        id: `rec-${Date.now()}`,
+        date: new Date().toISOString().split("T")[0],
+        fileName: documentFile ? documentFile.name : undefined,
+        imageName: imageFile ? imageFile.name : undefined,
+        medicalData: medicalData,
+        chatHistory: chatHistory,
+      };
+
+      // Save to server-side persistent database
+      await saveRecordToDatabase(activePatientId, newRecord);
+    }
+
+    setMedicalData(null);
+    setDocumentFile(null);
+    setImageFile(null);
+    setAnalysisError(null);
+    setActivePatientId(null);
+    setIsNewPatient(false);
+    try {
+      localStorage.removeItem("aegis_current_chat");
+      localStorage.removeItem("aegis_longitudinal_records");
+    } catch (e) {
+      console.error(e);
+    }
+    setHistoryRecords([]);
+    setSessionKey((prev) => prev + 1);
+    setIsSummaryModalOpen(false);
+  };
 
   const saveRecordToDatabase = async (patientId: string, record: HistoricalRecord) => {
     try {
@@ -107,6 +165,7 @@ export default function App() {
   const handleLoadRecords = (patientId: string, records: HistoricalRecord[]) => {
     setActivePatientId(patientId);
     setHistoryRecords(records);
+    setIsNewPatient(records.length === 0);
     try {
       localStorage.setItem("aegis_longitudinal_records", JSON.stringify(records));
     } catch {}
@@ -245,6 +304,16 @@ export default function App() {
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span>Multi-Source Gemini Core Node Active</span>
             </div>
+
+            <button
+              id="logout-btn"
+              onClick={() => setIsSummaryModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-stone-50 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 font-semibold cursor-pointer transition-all shadow-sm"
+              title="Logout & End Session"
+            >
+              <LogOut size={13} />
+              <span>End Session</span>
+            </button>
           </div>
         </div>
       </header>
@@ -315,6 +384,7 @@ export default function App() {
         {/* Patient Archive & Verification Console */}
         <PatientDatabaseConsole
           currentExpertise={clinicalExpertise}
+          onExpertiseChange={handleExpertiseChange}
           onLoadRecords={handleLoadRecords}
           activePatientId={activePatientId}
           setActivePatientId={setActivePatientId}
@@ -338,6 +408,7 @@ export default function App() {
           <div className="lg:col-span-7 space-y-6">
             
             <UploadZone
+              sessionKey={sessionKey}
               onAnalysisStarted={handleAnalysisStarted}
               onAnalysisSuccess={handleAnalysisSuccess}
               onAnalysisFailure={handleAnalysisFailure}
@@ -375,6 +446,7 @@ export default function App() {
               medicalData={medicalData} 
               documentFile={documentFile} 
               imageFile={imageFile}
+              clinicalExpertise={clinicalExpertise}
             />
 
           </div>
@@ -383,6 +455,7 @@ export default function App() {
           <div className="lg:col-span-5 lg:sticky lg:top-24 space-y-6">
             
             <ChatPanel 
+              sessionKey={sessionKey}
               medicalData={medicalData} 
               selectedModel={selectedModel}
               expertise={clinicalExpertise}
@@ -427,6 +500,8 @@ export default function App() {
             onRemoveRecord={handleRemoveRecord}
             selectedModel={selectedModel}
             expertise={clinicalExpertise}
+            isNewPatient={isNewPatient}
+            activePatientId={activePatientId}
           />
         </div>
 
@@ -438,6 +513,17 @@ export default function App() {
         onClose={() => setIsConsentModalOpen(false)}
         onAccept={handleAcceptRegulations}
         onDecline={handleDeclineRegulations}
+      />
+
+      {/* Summary Report & Logout session modal */}
+      <SummaryReportModal
+        isOpen={isSummaryModalOpen}
+        onClose={() => setIsSummaryModalOpen(false)}
+        onConfirmLogout={handleConfirmLogout}
+        medicalData={medicalData}
+        activePatientId={activePatientId}
+        clinicalExpertise={clinicalExpertise}
+        isNewPatient={isNewPatient}
       />
 
       {/* 3. Bottom Footer */}

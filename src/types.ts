@@ -31,6 +31,7 @@ export interface HistoricalRecord {
   fileName?: string;
   imageName?: string;
   medicalData: MedicalData;
+  chatHistory?: ChatMessage[];
 }
 
 export interface ChatMessage {

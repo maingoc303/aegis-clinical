@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Upload, FileText, CheckCircle2, AlertCircle, Layers, Image as ImageIcon, History, Sparkles, X, Calendar } from "lucide-react";
 import { UploadedFileState, MedicalData } from "../types";
 import { VoiceDictationButton } from "./VoiceControls";
@@ -17,6 +17,7 @@ interface UploadZoneProps {
   expertise: string;
   manualCurationGuidance: string;
   activeSkills?: string[];
+  sessionKey?: number;
 }
 
 export default function UploadZone({
@@ -28,12 +29,22 @@ export default function UploadZone({
   expertise,
   manualCurationGuidance,
   activeSkills,
+  sessionKey,
 }: UploadZoneProps) {
   // Independent uploading state for Document Column & Image Column
   const [docFile, setDocFile] = useState<UploadedFileState | null>(null);
   const [imageFile, setImageFile] = useState<UploadedFileState | null>(null);
   const [medicalHistory, setMedicalHistory] = useState("");
   const [reportDate, setReportDate] = useState<string>(new Date().toISOString().split("T")[0]);
+
+  useEffect(() => {
+    if (sessionKey !== undefined && sessionKey > 0) {
+      setDocFile(null);
+      setImageFile(null);
+      setMedicalHistory("");
+      setReportDate(new Date().toISOString().split("T")[0]);
+    }
+  }, [sessionKey]);
 
   const [docDragActive, setDocDragActive] = useState(false);
   const [imageDragActive, setImageDragActive] = useState(false);

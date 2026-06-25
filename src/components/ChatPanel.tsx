@@ -9,6 +9,7 @@ interface ChatPanelProps {
   expertise: string;
   manualCurationGuidance: string;
   activeSkills?: string[];
+  sessionKey?: number;
 }
 
 // Simple and safe text-to-HTML formatter to render Gemini's Markdown output elegantly
@@ -51,6 +52,7 @@ export default function ChatPanel({
   expertise,
   manualCurationGuidance,
   activeSkills,
+  sessionKey,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -60,6 +62,29 @@ export default function ChatPanel({
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
+
+  useEffect(() => {
+    if (sessionKey !== undefined && sessionKey > 0) {
+      setMessages([
+        {
+          id: "welcome",
+          role: "model",
+          content: "Hello! I am your AI Clinical Assistant. If you have uploaded a medical file, I have imported it into my workspace and can explain specific test results or prescriptions. What would you like to discuss today?",
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        },
+      ]);
+      setInputVal("");
+    }
+  }, [sessionKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("aegis_current_chat", JSON.stringify(messages));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [messages]);
+
   const [inputVal, setInputVal] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);

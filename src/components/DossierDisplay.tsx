@@ -10,11 +10,12 @@ interface DossierDisplayProps {
   medicalData: MedicalData | null;
   documentFile: UploadedFileState | null;
   imageFile: UploadedFileState | null;
+  clinicalExpertise?: string;
 }
 
 type FilterType = "ALL" | "ABNORMAL";
 
-export default function DossierDisplay({ medicalData, documentFile, imageFile }: DossierDisplayProps) {
+export default function DossierDisplay({ medicalData, documentFile, imageFile, clinicalExpertise = "PATIENT" }: DossierDisplayProps) {
   const [activeFilter, setActiveFilter] = useState<FilterType>("ALL");
 
   if (!medicalData) {
@@ -77,11 +78,15 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile }:
     }
   };
 
+  const isAnonymized = clinicalExpertise === "PHARMACIST" || clinicalExpertise === "PATHOLOGIST" || clinicalExpertise === "RESEARCHER";
+  const isPharmacist = clinicalExpertise === "PHARMACIST";
+  const isPathologist = clinicalExpertise === "PATHOLOGIST";
+
   return (
     <div id="clinical-dossier" className="space-y-6">
       
       {/* 1. Critical Alerts Indicator */}
-      {medicalData.criticalAlerts && medicalData.criticalAlerts.length > 0 && (
+      {!isPharmacist && medicalData.criticalAlerts && medicalData.criticalAlerts.length > 0 && (
         <div id="critical-alerts" className="bg-rose-50/90 border border-rose-200 rounded-xl p-4.5 text-stone-900 shadow-[0_2px_12px_rgba(239,68,68,0.04)]">
           <div className="flex items-start gap-3">
             <ShieldAlert size={20} className="text-rose-600 shrink-0 mt-0.5" />
@@ -114,14 +119,14 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile }:
                   DOC: {documentFile.name.length > 20 ? `${documentFile.name.substring(0, 18)}...` : documentFile.name}
                 </span>
               )}
-              {imageFile && (
+              {imageFile && !isPharmacist && (
                 <span className="px-1.5 py-0.5 bg-stone-800 text-emerald-400 rounded text-[9px] font-mono">
                   IMG: {imageFile.name.length > 20 ? `${imageFile.name.substring(0, 18)}...` : imageFile.name}
                 </span>
               )}
             </div>
             <h3 className="font-serif text-lg font-medium text-white tracking-tight mt-1.5">
-              {medicalData.documentType || "Consolidated Clinical Dossier"}
+              {isPharmacist ? "Pharmacotherapy Summary Profile" : (medicalData.documentType || "Consolidated Clinical Dossier")}
             </h3>
           </div>
           <div className="flex items-center gap-1.5 text-stone-400 text-xs font-mono shrink-0">
@@ -135,26 +140,26 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile }:
           <div className="space-y-1 pr-4 border-r border-stone-200/60">
             <span className="text-[10px] font-mono text-stone-400 uppercase tracking-widest block">Patient Name</span>
             <span className="text-sm font-semibold text-stone-900 truncate block">
-              {medicalData.patientName || "Anonymous Patient"}
+              {isAnonymized ? "Patient [ANONYMOUS COHORT]" : (medicalData.patientName || "Anonymous Patient")}
             </span>
           </div>
           <div className="space-y-1 pr-4 lg:border-r border-stone-200/60">
             <span className="text-[10px] font-mono text-stone-400 uppercase tracking-widest block">Bio Matrix</span>
             <span className="text-sm font-semibold text-stone-900 block">
-              {medicalData.patientAge ? `${medicalData.patientAge}` : "Omitted"} • {medicalData.patientGender || "Omitted"}
+              {isAnonymized ? "REDACTED" : (medicalData.patientAge ? `${medicalData.patientAge}` : "Omitted") + " • " + (medicalData.patientGender || "Omitted")}
             </span>
           </div>
           <div className="space-y-1 pr-4 border-r border-stone-200/60">
             <span className="text-[10px] font-mono text-stone-400 uppercase tracking-widest block">Primary Facility</span>
             <span className="text-sm font-medium text-stone-850 truncate block flex items-center gap-1">
               <Hospital size={12} className="text-stone-400 shrink-0" />
-              {medicalData.facilityName || "Clinical Lab/Omitted"}
+              {isAnonymized ? "REDACTED" : (medicalData.facilityName || "Clinical Lab/Omitted")}
             </span>
           </div>
           <div className="space-y-1">
             <span className="text-[10px] font-mono text-stone-400 uppercase tracking-widest block">Medical Provider</span>
             <span className="text-sm font-medium text-stone-850 truncate block">
-              {medicalData.providerName || "Physician in Charge"}
+              {isAnonymized ? "REDACTED" : (medicalData.providerName || "Physician in Charge")}
             </span>
           </div>
         </div>
@@ -168,19 +173,26 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile }:
             <div className="space-y-1.5 flex-1">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-700 font-mono flex items-center gap-1">
-                  Unified Layperson Clinical Summary
+                  Unified Clinical Summary
                 </h4>
-                <TextToSpeechButton text={medicalData.summary || ""} className="p-1 py-1 rounded-lg text-emerald-600 bg-emerald-50/50" />
+                {!isPharmacist && (
+                  <TextToSpeechButton text={medicalData.summary || ""} className="p-1 py-1 rounded-lg text-emerald-600 bg-emerald-50/50" />
+                )}
               </div>
               <p className="text-sm text-stone-650 leading-relaxed font-light">
-                {medicalData.summary}
+                {isPharmacist 
+                  ? "Restricted View: Detailed medical text summaries are omitted for Pharmacist privacy compliance." 
+                  : (clinicalExpertise === "RESEARCHER" 
+                      ? "Restricted View: Detailed case summary masked for researcher privacy compliance." 
+                      : medicalData.summary
+                    )}
               </p>
             </div>
           </div>
         </div>
 
         {/* 3. Foundation Model Clinical ImageObservations Interpretation (Xray/CT/MRI etc.) */}
-        {medicalData.imageObservations && (
+        {!isPharmacist && medicalData.imageObservations && (
           <div className="p-6 border-b border-stone-150 bg-stone-50/40">
             <div className="flex items-start gap-3">
               <div className="p-1.5 bg-sky-50 text-sky-700 rounded border border-sky-150 shrink-0 mt-0.5">
@@ -204,7 +216,7 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile }:
         )}
 
         {/* 4. Biomarkers Findings List */}
-        {medicalData.findings && medicalData.findings.length > 0 && (
+        {!isPharmacist && medicalData.findings && medicalData.findings.length > 0 && (
           <div className="p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4.5">
               <div className="flex items-center gap-1.5">
@@ -295,63 +307,67 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile }:
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
         {/* Confirmed Diagnoses Box */}
-        <div className="bg-white border border-stone-200 rounded-xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.01)]">
-          <div className="flex items-center gap-2 pb-3.5 border-b border-stone-100 mb-4">
-            <ClipboardList size={16} className="text-stone-600" />
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-800 font-mono">
-              Identified Conditions / Impressions
-            </h4>
+        {!isPharmacist && (
+          <div className="bg-white border border-stone-200 rounded-xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.01)]">
+            <div className="flex items-center gap-2 pb-3.5 border-b border-stone-100 mb-4">
+              <ClipboardList size={16} className="text-stone-600" />
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-800 font-mono">
+                Identified Conditions / Impressions
+              </h4>
+            </div>
+            {medicalData.diagnoses && medicalData.diagnoses.length > 0 ? (
+              <div className="space-y-2.5 font-sans">
+                {medicalData.diagnoses.map((diag, idx) => (
+                  <div key={idx} className="flex items-start gap-2.5 text-xs text-stone-700 bg-stone-50 p-2.5 rounded-md border border-stone-150/60 leading-relaxed">
+                    <ChevronRight size={13} className="text-stone-400 shrink-0 mt-0.5" />
+                    <span className="font-medium text-stone-900">{diag}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-xs font-mono text-stone-400 border border-dashed border-stone-150 rounded-lg">
+                No specific chronic/acute diagnosis statements found.
+              </div>
+            )}
           </div>
-          {medicalData.diagnoses && medicalData.diagnoses.length > 0 ? (
-            <div className="space-y-2.5 font-sans">
-              {medicalData.diagnoses.map((diag, idx) => (
-                <div key={idx} className="flex items-start gap-2.5 text-xs text-stone-700 bg-stone-50 p-2.5 rounded-md border border-stone-150/60 leading-relaxed">
-                  <ChevronRight size={13} className="text-stone-400 shrink-0 mt-0.5" />
-                  <span className="font-medium text-stone-900">{diag}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-xs font-mono text-stone-400 border border-dashed border-stone-150 rounded-lg">
-              No specific chronic/acute diagnosis statements found.
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Medications & Actions Box */}
-        <div className="bg-white border border-stone-200 rounded-xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.01)]">
-          <div className="flex items-center gap-2 pb-3.5 border-b border-stone-100 mb-4">
-            <Pill size={16} className="text-stone-600" />
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-800 font-mono">
-              Interventions &amp; recommendations
-            </h4>
-          </div>
-          {medicalData.medicationsAndRecommendations && medicalData.medicationsAndRecommendations.length > 0 ? (
-            <div className="space-y-3 font-sans">
-              {medicalData.medicationsAndRecommendations.map((med, idx) => (
-                <div key={idx} className="bg-emerald-50/20 border border-emerald-150/40 p-3 rounded-md space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-semibold text-xs text-emerald-950">{med.item}</span>
+        {!isPathologist && (
+          <div className="bg-white border border-stone-200 rounded-xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.01)]" style={{ gridColumn: isPharmacist ? "span 2 / span 2" : "auto" }}>
+            <div className="flex items-center gap-2 pb-3.5 border-b border-stone-100 mb-4">
+              <Pill size={16} className="text-stone-600" />
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-800 font-mono">
+                Interventions &amp; Recommendations (Pharmacotherapy)
+              </h4>
+            </div>
+            {medicalData.medicationsAndRecommendations && medicalData.medicationsAndRecommendations.length > 0 ? (
+              <div className="space-y-3 font-sans">
+                {medicalData.medicationsAndRecommendations.map((med, idx) => (
+                  <div key={idx} className="bg-emerald-50/20 border border-emerald-150/40 p-3 rounded-md space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-xs text-emerald-950">{med.item}</span>
+                    </div>
+                    {med.dosageOrInstructions && (
+                      <p className="text-[11px] text-stone-600 font-mono">
+                        Instructions: {med.dosageOrInstructions}
+                      </p>
+                    )}
+                    {med.purpose && (
+                      <p className="text-[11px] text-stone-500 font-light italic leading-normal">
+                        Intended Goal: {med.purpose}
+                      </p>
+                    )}
                   </div>
-                  {med.dosageOrInstructions && (
-                    <p className="text-[11px] text-stone-600 font-mono">
-                      Instructions: {med.dosageOrInstructions}
-                    </p>
-                  )}
-                  {med.purpose && (
-                    <p className="text-[11px] text-stone-500 font-light italic leading-normal">
-                      Intended Goal: {med.purpose}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-xs font-mono text-stone-400 border border-dashed border-stone-150 rounded-lg">
-              No prescription directions or recommendations annotated.
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-xs font-mono text-stone-400 border border-dashed border-stone-150 rounded-lg">
+                No prescription directions or recommendations annotated.
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
     </div>

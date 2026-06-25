@@ -123,9 +123,9 @@ export function VoiceDictationButton({
       )}
 
       {hasPermissionError && (
-        <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-amber-950 text-amber-100 text-[9.5px] font-sans px-3 py-1.5 rounded-xl shadow-lg border border-amber-800 whitespace-normal w-52 text-center leading-normal z-50 animate-fadeIn">
-          <p className="font-semibold text-amber-300 mb-0.5">Microphone Denied</p>
-          Please check your browser permissions to allow microphone access.
+        <div className="absolute -top-20 left-1/2 -translate-x-1/2 bg-amber-950 text-amber-100 text-[9.5px] font-sans px-3 py-2 rounded-xl shadow-lg border border-amber-800 whitespace-normal w-60 text-center leading-normal z-50 animate-fadeIn">
+          <p className="font-semibold text-amber-300 mb-0.5">Microphone Access Needed</p>
+          Please check your browser microphone permissions. If you are running inside a sandboxed preview frame, click the <strong>"Open in New Tab"</strong> button in the header to grant access!
         </div>
       )}
     </div>
