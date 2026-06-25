@@ -18,21 +18,14 @@ import {
   Send,
   Sliders,
   Filter,
-  Users
+  Users,
+  Dna,
+  FlaskConical,
+  Image as ImageIcon
 } from "lucide-react";
-import { HistoricalRecord } from "../types";
+import { HistoricalRecord, Patient } from "../types";
 import { EXPERTISE_PROFILES } from "../data/clinicalSkills";
 import ClinicalKnowledgeGraph from "./ClinicalKnowledgeGraph";
-
-interface Patient {
-  id: string;
-  name: string;
-  birth: string;
-  gender: string;
-  facility: string;
-  status: string;
-  records: HistoricalRecord[];
-}
 
 interface PatientDatabaseConsoleProps {
   currentExpertise: string;
@@ -57,53 +50,8 @@ export default function PatientDatabaseConsole({
   const [isLoadingPatients, setIsLoadingPatients] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchSuccess, setSearchSuccess] = useState<string | null>(null);
-  const [selectedCohortCondition, setSelectedCohortCondition] = useState("");
 
-  // Cohort Chat State (Researcher Only)
-  const [cohortQuery, setCohortQuery] = useState("");
-  const [cohortLoading, setCohortLoading] = useState(false);
-  const [cohortChat, setCohortChat] = useState<Array<{
-    id: string;
-    role: "user" | "assistant";
-    content: string;
-    inclusion?: string[];
-    exclusion?: string[];
-    matchedPatients?: Patient[];
-  }>>([
-    {
-      id: "init",
-      role: "assistant",
-      content: "Welcome, Lead Clinical Investigator. Please enter your natural-language Cohort screening parameters (Inclusion/Exclusion criteria) below. Our engine will securely scan patient profiles in the encrypted ledger, apply security masking policies, and return matching anonymized records.",
-    }
-  ]);
-
-  // Extract all unique diagnostic conditions for secondary researchers to query
-  const allConditions = useMemo(() => {
-    const conditionsSet = new Set<string>();
-    patients.forEach(p => {
-      if (p.records) {
-        p.records.forEach(rec => {
-          if (rec.medicalData && Array.isArray(rec.medicalData.diagnoses)) {
-            rec.medicalData.diagnoses.forEach(diag => {
-              conditionsSet.add(diag);
-            });
-          }
-        });
-      }
-    });
-    return Array.from(conditionsSet);
-  }, [patients]);
-
-  const cohortPatients = useMemo(() => {
-    if (!selectedCohortCondition) return [];
-    return patients.filter(p => {
-      return p.records && p.records.some(rec => 
-        rec.medicalData && Array.isArray(rec.medicalData.diagnoses) && rec.medicalData.diagnoses.includes(selectedCohortCondition)
-      );
-    });
-  }, [selectedCohortCondition, patients]);
-
-  // Load the full patients list with their linked diagnoses
+  // Load the full patients list
   const fetchPatientsList = async () => {
     setIsLoadingPatients(true);
     try {
@@ -173,55 +121,7 @@ export default function PatientDatabaseConsole({
     }
   };
 
-  // Cohort Criteria Submission Handler (Researcher Chat Box)
-  const handleCohortSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!cohortQuery.trim() || cohortLoading) return;
-
-    const userMsg = cohortQuery.trim();
-    setCohortQuery("");
-    setCohortLoading(true);
-
-    const newUserMessage = {
-      id: `msg-${Date.now()}`,
-      role: "user" as const,
-      content: userMsg,
-    };
-    setCohortChat(prev => [...prev, newUserMessage]);
-
-    try {
-      const res = await fetch("/api/researcher/cohort-query", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: userMsg }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        const aiMessage = {
-          id: `msg-${Date.now() + 1}`,
-          role: "assistant" as const,
-          content: data.explanation,
-          inclusion: data.inclusion,
-          exclusion: data.exclusion,
-          matchedPatients: data.matchedPatients,
-        };
-        setCohortChat(prev => [...prev, aiMessage]);
-      } else {
-        throw new Error(data.error || "Cohort screening failed.");
-      }
-    } catch (err: any) {
-      const errMsg = {
-        id: `msg-${Date.now() + 1}`,
-        role: "assistant" as const,
-        content: `Screening Protocol Halt: ${err.message || "An unexpected error occurred during cohort screening."}`,
-      };
-      setCohortChat(prev => [...prev, errMsg]);
-    } finally {
-      setCohortLoading(false);
-    }
-  };
-
-  const isSecurityMasked = currentExpertise === "PHARMACIST" || currentExpertise === "RESEARCHER";
+  const isSecurityMasked = currentExpertise === "PHARMACIST" || currentExpertise === "PATHOLOGIST";
   const hasExistedPatient = !!activePatientId && historyRecords.length > 0;
 
   return (
@@ -323,6 +223,152 @@ export default function PatientDatabaseConsole({
                 )}
               </div>
 
+              {currentLoadedPatient && (
+                <div className="mt-3 pt-2.5 border-t border-stone-100 space-y-3.5">
+                  {/* Biobank Sub-section */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-stone-500 font-bold flex items-center gap-1">
+                        <FlaskConical size={11} className="text-emerald-600 animate-pulse" />
+                        Biobank Registry
+                      </span>
+                      {currentLoadedPatient.biobankConsent ? (
+                        <span className="px-1.5 py-0.25 bg-emerald-50 border border-emerald-200 text-emerald-850 text-[8.5px] font-mono font-bold rounded">
+                          ✓ Consented
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.25 bg-stone-100 border border-stone-200 text-stone-500 text-[8.5px] font-mono font-bold rounded">
+                          ✗ No Consent
+                        </span>
+                      )}
+                    </div>
+                    {currentLoadedPatient.biobankConsent && currentLoadedPatient.biobankInfo ? (
+                      <div className="bg-stone-50/70 rounded-xl p-2.5 border border-stone-200 text-[10.5px] space-y-2">
+                        <div className="grid grid-cols-2 gap-1.5 text-stone-600 font-light">
+                          <div className="bg-white p-1.5 rounded-lg border border-stone-150 shadow-sm">
+                            <span className="text-[8px] font-mono text-stone-400 block uppercase leading-tight">Blood Aliquots</span>
+                            <span className="font-semibold text-stone-800">{currentLoadedPatient.biobankInfo.bloodTubesCount || 0} Tubes Stored</span>
+                          </div>
+                          <div className="bg-white p-1.5 rounded-lg border border-stone-150 shadow-sm">
+                            <span className="text-[8px] font-mono text-stone-400 block uppercase leading-tight">Urine / Stool</span>
+                            <span className="font-semibold text-stone-800 text-[9.5px]">
+                              {currentLoadedPatient.biobankInfo.urineSample ? "✓ Urine" : "✗ Urine"} • {currentLoadedPatient.biobankInfo.stoolSample ? "✓ Stool" : "✗ Stool"}
+                            </span>
+                          </div>
+                        </div>
+                        {currentLoadedPatient.biobankInfo.otherSamples && currentLoadedPatient.biobankInfo.otherSamples.length > 0 && (
+                          <div className="pt-1 border-t border-stone-150">
+                            <span className="text-[8.5px] font-mono text-stone-400 block uppercase mb-1">Additional Specimens:</span>
+                            <div className="flex flex-wrap gap-1">
+                              {currentLoadedPatient.biobankInfo.otherSamples.map((sample, idx) => (
+                                <span key={idx} className="px-1.5 py-0.25 bg-white border border-stone-150 text-[9px] text-stone-700 rounded font-mono shadow-sm">
+                                  {sample}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex justify-between items-center text-[8.5px] font-mono text-stone-400 pt-1.5 border-t border-stone-150">
+                          <span>Authorization:</span>
+                          <span className="font-semibold text-stone-600">{currentLoadedPatient.biobankConsentDate}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[10.5px] text-stone-500 font-light leading-normal bg-stone-50/50 p-2.5 rounded-xl border border-stone-200">
+                        The patient has not granted permission to distribute clinical biosamples (Serum, Tissue block, or genetic markers) to any secondary academic biobanks.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Multi-Omics Subsection */}
+                  {currentLoadedPatient.omicsData && (
+                    <div className="space-y-1.5 pt-2 border-t border-stone-100">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-stone-500 font-bold flex items-center gap-1">
+                        <Dna size={11} className="text-purple-600" />
+                        Multi-Omics Datasets
+                      </span>
+                      <div className="bg-stone-50/70 rounded-xl p-2.5 border border-stone-200 text-[10.5px] space-y-2">
+                        <div className="flex flex-wrap gap-1">
+                          <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono font-medium border ${currentLoadedPatient.omicsData.dnaSequenced ? "bg-purple-50 text-purple-800 border-purple-200" : "bg-stone-100 text-stone-450 border-stone-200"}`}>
+                            DNA
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono font-medium border ${currentLoadedPatient.omicsData.rnaSequenced ? "bg-purple-50 text-purple-800 border-purple-200" : "bg-stone-100 text-stone-450 border-stone-200"}`}>
+                            RNA
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono font-medium border ${currentLoadedPatient.omicsData.proteinProfiling ? "bg-purple-50 text-purple-800 border-purple-200" : "bg-stone-100 text-stone-450 border-stone-200"}`}>
+                            Proteins
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono font-medium border ${currentLoadedPatient.omicsData.metabolomics ? "bg-purple-50 text-purple-800 border-purple-200" : "bg-stone-100 text-stone-450 border-stone-200"}`}>
+                            Metabolic
+                          </span>
+                        </div>
+                        {currentLoadedPatient.omicsData.details && (
+                          <div className="bg-white p-2.5 rounded-lg border border-stone-150 space-y-1.5 text-stone-700 shadow-sm">
+                            {currentLoadedPatient.omicsData.details.dnaVariantCount && (
+                              <p className="flex justify-between text-[10px] font-mono leading-tight">
+                                <span className="text-stone-400 font-medium">GENOME VARIANT</span>
+                                <span className="font-semibold text-stone-800">{currentLoadedPatient.omicsData.details.dnaVariantCount}</span>
+                              </p>
+                            )}
+                            {currentLoadedPatient.omicsData.details.rnaExpressedGenes && (
+                              <p className="flex justify-between text-[10px] font-mono leading-tight">
+                                <span className="text-stone-400 font-medium font-sans">EXPRESSED TRANSCRIPTS</span>
+                                <span className="font-semibold text-stone-850">{currentLoadedPatient.omicsData.details.rnaExpressedGenes}</span>
+                              </p>
+                            )}
+                            {currentLoadedPatient.omicsData.details.proteinBiomarkers && (
+                              <div>
+                                <span className="text-[8.5px] font-mono text-stone-400 block uppercase leading-none mb-1">Assayed Protein Targets:</span>
+                                <span className="font-medium text-stone-850 text-[10px] block leading-tight bg-stone-50/50 p-1 rounded border border-stone-100 font-mono">{currentLoadedPatient.omicsData.details.proteinBiomarkers.join(", ")}</span>
+                              </div>
+                            )}
+                            {currentLoadedPatient.omicsData.details.metabolitesIdentified && (
+                              <p className="flex justify-between text-[10px] font-mono leading-tight pt-1.5 border-t border-stone-100">
+                                <span className="text-stone-400 font-medium">METABOLOMICS DETECTED</span>
+                                <span className="font-semibold text-stone-800">{currentLoadedPatient.omicsData.details.metabolitesIdentified}</span>
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Clinical Imaging Logs Subsection */}
+                  {currentLoadedPatient.images && currentLoadedPatient.images.length > 0 && (
+                    <div className="space-y-1.5 pt-2 border-t border-stone-100">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-stone-500 font-bold flex items-center gap-1">
+                        <ImageIcon size={11} className="text-blue-600 animate-pulse" />
+                        Clinical Scan Repositories
+                      </span>
+                      <div className="space-y-2">
+                        {currentLoadedPatient.images.map((image) => (
+                          <div key={image.id} className="bg-stone-50/70 rounded-xl p-2.5 border border-stone-200 text-[10.5px] space-y-1.5 shadow-sm">
+                            <div className="flex items-center justify-between border-b border-stone-150 pb-1">
+                              <span className="px-1.5 py-0.25 bg-blue-50 text-blue-800 border border-blue-150 rounded text-[8.5px] font-mono font-bold uppercase">
+                                {image.type} SCAN
+                              </span>
+                              <span className="text-[9px] font-mono text-stone-400">{image.date}</span>
+                            </div>
+                            <p className="font-bold text-stone-800 font-mono text-[10px] leading-snug">
+                              Region: {image.bodyPart}
+                            </p>
+                            <p className="text-[10px] text-stone-600 font-light leading-normal bg-white p-2 rounded-lg border border-stone-150 shadow-inner">
+                              <strong className="font-semibold text-stone-700">Findings:</strong> {image.findings}
+                            </p>
+                            {image.visualDescription && (
+                              <p className="text-[9.5px] text-stone-400 italic">
+                                Scan Overlay: "{image.visualDescription}"
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="pt-2 border-t border-stone-100 flex justify-between items-center text-[10px]">
                 <span className="text-stone-400 font-light">
                   Ledger entries: <span className="font-semibold text-stone-700">{historyRecords.length} report(s)</span>
@@ -417,59 +463,6 @@ export default function PatientDatabaseConsole({
             </div>
           )}
 
-          {/* Sub-section 6: Cohort Query dropdown list - Exclusively for RESEARCHER */}
-          {currentExpertise === "RESEARCHER" && allConditions.length > 0 && (
-            <div className="p-4 bg-emerald-50/20 border border-emerald-500/15 rounded-xl space-y-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-800 font-mono flex items-center gap-1.5">
-                <Filter size={12} className="text-emerald-600" />
-                Ledger Diagnostic Directory
-              </h4>
-              <p className="text-[11px] text-stone-500 leading-tight">
-                Quick-select a condition detected in patient records to filter matching de-identified IDs:
-              </p>
-              <div className="space-y-2">
-                <select
-                  value={selectedCohortCondition}
-                  onChange={(e) => setSelectedCohortCondition(e.target.value)}
-                  className="w-full text-xs p-2 border border-stone-200 rounded-lg bg-white text-stone-800"
-                >
-                  <option value="">-- Choose Diagnostic Condition --</option>
-                  {allConditions.map((cond, idx) => (
-                    <option key={idx} value={cond}>{cond}</option>
-                  ))}
-                </select>
-              </div>
-
-              {selectedCohortCondition && (
-                <div className="space-y-2 pt-2 border-t border-stone-100 animate-fadeIn">
-                  <span className="text-[10px] font-mono text-stone-500 font-semibold block">
-                    Matching Cohort IDs ({cohortPatients.length})
-                  </span>
-                  {cohortPatients.length === 0 ? (
-                    <p className="text-xs text-stone-400 italic">No matching records in active ledger.</p>
-                  ) : (
-                    <div className="max-h-24 overflow-y-auto space-y-1.5 pr-1">
-                      {cohortPatients.map((cp) => (
-                        <div key={cp.id} className="flex items-center justify-between p-1.5 bg-white border border-stone-150 rounded text-xs">
-                          <span className="font-mono text-[11px] font-semibold text-stone-700">{cp.id}</span>
-                          <button
-                            onClick={() => {
-                              setSearchId(cp.id);
-                              handleRetrievePatient(cp.id);
-                            }}
-                            className="px-2 py-0.5 bg-stone-900 hover:bg-emerald-700 text-white text-[10px] rounded cursor-pointer transition-all"
-                          >
-                            Select
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
         </div>
 
         {/* RIGHT Column: Dynamic Analytics Area (lg:col-span-7) */}
@@ -484,136 +477,6 @@ export default function PatientDatabaseConsole({
                 Please select your clinical authority role above to activate compliance protocols and load the Clinical Knowledge Graph.
               </p>
             </div>
-          ) : currentExpertise === "RESEARCHER" ? (
-            /* STATE 2: Medical Researcher - Cohort Query Chat Box (No graph visible!) */
-            <div className="flex-1 flex flex-col h-full bg-stone-950 text-stone-200">
-              {/* Header */}
-              <div className="border-b border-stone-800 p-4.5 bg-stone-900/40 backdrop-blur flex items-center justify-between shrink-0">
-                <div>
-                  <p className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold flex items-center gap-1.5">
-                    <Network size={12} className="text-emerald-500 animate-pulse" />
-                    Cohort Criteria Query Screener
-                  </p>
-                  <h4 className="text-xs font-serif font-semibold text-stone-200">
-                    Interactive I/E Eligibility Analysis Box
-                  </h4>
-                </div>
-                <div className="text-[9px] font-mono text-stone-400 bg-stone-800 px-2 py-1 rounded">
-                  Regulatory Security: HIPAA Masked
-                </div>
-              </div>
-
-              {/* Chat Message Thread */}
-              <div className="flex-1 p-5 overflow-y-auto space-y-4 max-h-[380px]">
-                {cohortChat.map((msg) => (
-                  <div key={msg.id} className={`flex flex-col space-y-1.5 animate-fadeIn ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                    <span className="text-[9px] font-mono text-stone-500 uppercase tracking-wider px-1">
-                      {msg.role === "user" ? "Researcher Request" : "Aegis Screening Agent"}
-                    </span>
-                    <div className={`p-4 rounded-xl text-xs max-w-[85%] leading-relaxed ${
-                      msg.role === "user" 
-                        ? "bg-emerald-650 text-white font-medium shadow-sm" 
-                        : "bg-stone-900 border border-stone-800 text-stone-100"
-                    }`}>
-                      <p>{msg.content}</p>
-                      
-                      {/* Inclusion / Exclusion Tags */}
-                      {(msg.inclusion || msg.exclusion) && (
-                        <div className="mt-3.5 pt-3 border-t border-stone-800/80 flex flex-wrap gap-2">
-                          {msg.inclusion && msg.inclusion.map((inc, i) => (
-                            <span key={`inc-${i}`} className="text-[9px] font-mono px-2 py-0.5 bg-emerald-950/80 text-emerald-300 border border-emerald-900/40 rounded-full flex items-center gap-1.5">
-                              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                              Inclusion: {inc}
-                            </span>
-                          ))}
-                          {msg.exclusion && msg.exclusion.map((exc, i) => (
-                            <span key={`exc-${i}`} className="text-[9px] font-mono px-2 py-0.5 bg-rose-950/80 text-rose-300 border border-rose-900/40 rounded-full flex items-center gap-1.5">
-                              <span className="w-1.5 h-1.5 bg-rose-500 rounded-full" />
-                              Exclusion: {exc}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Matched Patients list */}
-                    {msg.matchedPatients && (
-                      <div className="w-full max-w-[90%] bg-stone-900/30 border border-stone-800 rounded-xl p-4 space-y-3 mt-1.5 shadow-inner">
-                        <div className="flex items-center justify-between border-b border-stone-800 pb-2">
-                          <span className="text-[9px] font-mono uppercase tracking-widest text-stone-400 font-semibold flex items-center gap-1.5">
-                            <Users size={12} className="text-emerald-500 animate-pulse" />
-                            Anonymized Ledger Cohort Matches ({msg.matchedPatients.length})
-                          </span>
-                          <span className="text-[9px] text-stone-500 font-light font-mono">HIPAA compliant</span>
-                        </div>
-                        
-                        {msg.matchedPatients.length === 0 ? (
-                          <p className="text-xs text-stone-500 italic font-light">No patient records in active registry match these criteria.</p>
-                        ) : (
-                          <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
-                            {msg.matchedPatients.map((pat) => (
-                              <div key={pat.id} className="p-3 bg-stone-950 border border-stone-850 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-emerald-800 transition-all">
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-mono text-xs text-emerald-400 font-bold">{pat.id}</span>
-                                    <span className="text-[9.5px] px-1.5 py-0.25 bg-stone-800 border border-stone-750 text-stone-300 rounded font-mono">
-                                      {pat.gender} • Born {pat.birth}
-                                    </span>
-                                  </div>
-                                  <div className="flex flex-wrap gap-1 mt-1">
-                                    {pat.records && pat.records[0]?.medicalData?.diagnoses?.map((d: string, i: number) => (
-                                      <span key={i} className="text-[8.5px] px-1.5 py-0.25 bg-stone-900 border border-stone-850 text-stone-400 rounded font-light">
-                                        {d}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={() => {
-                                    setSearchId(pat.id);
-                                    handleRetrievePatient(pat.id);
-                                  }}
-                                  className="px-3 py-1 bg-emerald-650 hover:bg-emerald-700 hover:text-white text-white text-[10.5px] font-mono rounded-lg cursor-pointer transition-all shrink-0 flex items-center gap-1"
-                                >
-                                  Sync Dossier
-                                  <ArrowRight size={10} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                
-                {cohortLoading && (
-                  <div className="flex items-center gap-2 text-xs text-stone-400 font-mono pl-1 py-1">
-                    <RefreshCw size={12} className="animate-spin text-emerald-500" />
-                    Scanning secure patient databases...
-                  </div>
-                )}
-              </div>
-
-              {/* Chat Form */}
-              <form onSubmit={handleCohortSubmit} className="p-3 border-t border-stone-800 bg-stone-900/30 flex gap-2 shrink-0">
-                <input
-                  type="text"
-                  value={cohortQuery}
-                  onChange={(e) => setCohortQuery(e.target.value)}
-                  disabled={cohortLoading}
-                  placeholder="Enter criteria (e.g., 'Inclusion: heart failure and hypertension, exclusion: diabetes')..."
-                  className="flex-1 bg-stone-900 border border-stone-800 rounded-xl px-4 py-2.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-emerald-600 disabled:opacity-50"
-                />
-                <button
-                  type="submit"
-                  disabled={cohortLoading || !cohortQuery.trim()}
-                  className="p-2.5 bg-emerald-650 hover:bg-emerald-700 disabled:bg-stone-800 disabled:text-stone-600 text-white rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0"
-                >
-                  <Send size={13} />
-                </button>
-              </form>
-            </div>
           ) : (
             /* STATE 3: Clinical Roles - Clinical Knowledge Graph */
             <>
@@ -621,6 +484,7 @@ export default function PatientDatabaseConsole({
                 <ClinicalKnowledgeGraph 
                   records={historyRecords}
                   expertise={currentExpertise}
+                  patient={currentLoadedPatient}
                 />
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-stone-400 bg-stone-950 min-h-[460px]">

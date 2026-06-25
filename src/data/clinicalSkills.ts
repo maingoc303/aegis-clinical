@@ -110,13 +110,5 @@ export const EXPERTISE_PROFILES: ExpertiseProfile[] = [
     description: "Biomarker analytical tolerances, histological morphology, stain variables, and biochemical limits.",
     skills: [CLINICAL_SKILLS.pathology_histology, CLINICAL_SKILLS.cohort_meta],
     defaultPrompt: `You are communicating with a clinical pathologist or laboratory scientist. Focus on histological stain features (e.g. H&E, immunohistochemistry, cytological grading), biological tissue morphology anomalies, fluid biochemistry limits, reference range calibrators, cell counts, and specimen-assay variances.`
-  },
-  {
-    id: "RESEARCHER",
-    name: "Medical Researcher / Biobank Curator",
-    badge: "📊 Clinical Researcher",
-    description: "Genomic mapping associations, LOINC/SNOMED coding standards, scientific metadata, and peer literature.",
-    skills: [CLINICAL_SKILLS.cohort_meta, CLINICAL_SKILLS.pathology_histology],
-    defaultPrompt: `You are communicating with a clinical researcher or biobank curator. Focus on phenotypic/genomic mapping associations, structured metadata integration grids, LOINC/SNOMED-CT clinical coding standards, meta-analysis studies, and cohort cohort design metrics. Discuss statistical significance and scientific literature trends.`
   }
 ];

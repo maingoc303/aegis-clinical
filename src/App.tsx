@@ -57,7 +57,6 @@ export default function App() {
       MD_PRACTITIONER: ["differential_diagnostics.md", "pharmacology.md"],
       PHARMACIST: ["pharmacology.md", "differential_diagnostics.md"],
       PATHOLOGIST: ["laboratory_pathology.md", "cohort_statistics.md"],
-      RESEARCHER: ["cohort_statistics.md", "laboratory_pathology.md"],
     };
     const defaultFiles = defaultMap[roleId] || [];
     handleActiveSkillsChange(defaultFiles);

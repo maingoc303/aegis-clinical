@@ -17,7 +17,6 @@ const EXPERTISE_TO_SKILLS_MAP: { [key: string]: string[] } = {
   MD_PRACTITIONER: ["differential_diagnostics.md", "pharmacology.md"],
   PHARMACIST: ["pharmacology.md", "differential_diagnostics.md"],
   PATHOLOGIST: ["laboratory_pathology.md", "cohort_statistics.md"],
-  RESEARCHER: ["cohort_statistics.md", "laboratory_pathology.md"],
 };
 
 // Seed database structure matching simulated patient charts
@@ -29,6 +28,38 @@ const INITIAL_PATIENTS_DB: { [key: string]: any } = {
     gender: "Male",
     facility: "Metabolic Research Inst.",
     status: "Cohort Enrolled",
+    biobankConsent: true,
+    biobankSamples: ["Fasting Serum Aliquot", "Whole Blood DNA Extract", "Plasma Aliquot", "Urine Sample", "Saliva DNA Collection Tube"],
+    biobankConsentDate: "2025-10-14",
+    biobankInfo: {
+      consent: true,
+      consentDate: "2025-10-14",
+      bloodTubesCount: 4,
+      urineSample: true,
+      stoolSample: false,
+      otherSamples: ["Saliva DNA collection tube", "Plasma aliquot"]
+    },
+    omicsData: {
+      dnaSequenced: true,
+      rnaSequenced: false,
+      proteinProfiling: true,
+      metabolomics: true,
+      details: {
+        dnaVariantCount: "3,421,950 SNPs (WGS 30x)",
+        proteinBiomarkers: ["Troponin-T", "NT-proBNP", "Myoglobin", "ST2", "GDF-15"],
+        metabolitesIdentified: "245 lipids & fatty acids profile"
+      }
+    },
+    images: [
+      {
+        id: "img-ct-01",
+        type: "CT",
+        bodyPart: "Chest (Coronary Angiography)",
+        date: "2026-01-12",
+        findings: "Calcified atherosclerotic plaque in the left anterior descending (LAD) coronary artery (Agatston score = 240). Significant narrowing of lumen (~40%).",
+        visualDescription: "High-density calcified lesion localized along the diagonal arterial branch."
+      }
+    ],
     records: [
       {
         id: "sim-1",
@@ -93,6 +124,38 @@ const INITIAL_PATIENTS_DB: { [key: string]: any } = {
     gender: "Female",
     facility: "EHR Endocrine Registries",
     status: "Sub-cohort Synced",
+    biobankConsent: true,
+    biobankSamples: ["SST Serum Aliquot", "PBMC RNA Extract", "Fasting Urine Tube", "Stool Microbiome Swab"],
+    biobankConsentDate: "2026-02-16",
+    biobankInfo: {
+      consent: true,
+      consentDate: "2026-02-16",
+      bloodTubesCount: 6,
+      urineSample: true,
+      stoolSample: true,
+      otherSamples: ["PBMC RNA pellet", "Stool microbiome stabilizer vial"]
+    },
+    omicsData: {
+      dnaSequenced: false,
+      rnaSequenced: true,
+      proteinProfiling: true,
+      metabolomics: true,
+      details: {
+        rnaExpressedGenes: "12,450 genes expressed (IRS1 pathway downregulated)",
+        proteinBiomarkers: ["Fasting Insulin", "Adiponectin", "Leptin", "hs-CRP"],
+        metabolitesIdentified: "112 amino acid & organic acid markers"
+      }
+    },
+    images: [
+      {
+        id: "img-mri-02",
+        type: "MRI",
+        bodyPart: "Abdomen (Hepatic PDFF)",
+        date: "2026-02-18",
+        findings: "Severe hepatic steatosis with cellular intracellular lipid accumulation. Proton density fat fraction (PDFF) measured at 14.2% (Moderate-to-Severe threshold).",
+        visualDescription: "Uniform focal intensity dropout across the liver lobes on out-of-phase gradient scans."
+      }
+    ],
     records: [
       {
         id: "sim-3",
@@ -134,19 +197,36 @@ async function initializeDatabase() {
     if (!fs.existsSync(dbDir)) {
       await fsPromises.mkdir(dbDir, { recursive: true });
     }
+    let needsWrite = false;
     if (!fs.existsSync(dbPath)) {
+      needsWrite = true;
+    } else {
+      const content = await fsPromises.readFile(dbPath, "utf-8");
+      try {
+        const parsed = JSON.parse(content);
+        // If existing database lacks biobank details/images fields, trigger a migration rewrite
+        const firstPatient = Object.values(parsed)[0] as any;
+        if (!firstPatient || firstPatient.biobankInfo === undefined || firstPatient.images === undefined) {
+          needsWrite = true;
+        }
+      } catch {
+        needsWrite = true;
+      }
+    }
+
+    if (needsWrite) {
       await fsPromises.writeFile(dbPath, JSON.stringify(INITIAL_PATIENTS_DB, null, 2), "utf-8");
-      console.log("Patient database successfully seeded at: " + dbPath);
+      console.log("Patient database successfully seeded/updated at: " + dbPath);
     }
   } catch (err) {
     console.error("Failed to seed patient database:", err);
   }
 }
 
-// Security Anonymization Policy: Mask patient id and names for secondary users (e.g. PHARMACIST, PATHOLOGIST, RESEARCHER)
+// Security Anonymization Policy: Mask patient id and names for secondary users (e.g. PHARMACIST, PATHOLOGIST)
 function applySecurityPolicy(patientData: any, expertise: string) {
   // Only MD_PRACTITIONER and PATIENT see full unmasked identifying details.
-  // PATHOLOGIST, PHARMACIST, and RESEARCHER must have personal identifying information masked.
+  // PATHOLOGIST and PHARMACIST must have personal identifying information masked.
   const isFullyUnmasked = expertise === "MD_PRACTITIONER" || expertise === "PATIENT";
 
   if (isFullyUnmasked) {
@@ -195,17 +275,6 @@ function applySecurityPolicy(patientData: any, expertise: string) {
             diagnoses: rawMedical.diagnoses || [],
             medicationsAndRecommendations: [], // Pathologists do not need treatment medication lists
             summary: rawMedical.summary ? rawMedical.summary.replace(new RegExp(rawId, "g"), maskedId) : ""
-          };
-        } else if (expertise === "RESEARCHER") {
-          // Medical Researcher: Mask personal info. Can query patient/cohort.
-          rec.medicalData = {
-            ...rawMedical,
-            patientName: "Patient [ANONYMOUS]",
-            patientId: maskedId,
-            findings: rawMedical.findings || [],
-            diagnoses: rawMedical.diagnoses || [],
-            medicationsAndRecommendations: rawMedical.medicationsAndRecommendations || [],
-            summary: "Restricted View: Detailed case summary masked for researcher privacy compliance."
           };
         }
       }
@@ -290,123 +359,7 @@ async function startServer() {
     }
   });
 
-  // Researcher cohort criteria querying endpoint
-  app.post("/api/researcher/cohort-query", async (req, res) => {
-    try {
-      const { query, model } = req.body;
-      if (!query || typeof query !== "string") {
-        return res.status(400).json({ error: "Missing required 'query' parameter." });
-      }
 
-      await initializeDatabase();
-      const content = await fsPromises.readFile(dbPath, "utf-8");
-      const db = JSON.parse(content);
-
-      // Prepare an anonymized, minimal dataset for Gemini to analyze safely
-      const databaseSummary = Object.values(db).map((p: any) => {
-        const allDiagnoses: string[] = [];
-        const allFindings: string[] = [];
-        let age = "Unknown";
-        let gender = p.gender || "Unknown";
-
-        if (p.records && Array.isArray(p.records)) {
-          p.records.forEach((rec: any) => {
-            if (rec.medicalData) {
-              if (rec.medicalData.patientAge) age = rec.medicalData.patientAge;
-              if (rec.medicalData.patientGender) gender = rec.medicalData.patientGender;
-              if (Array.isArray(rec.medicalData.diagnoses)) {
-                rec.medicalData.diagnoses.forEach((d: string) => allDiagnoses.push(d));
-              }
-              if (Array.isArray(rec.medicalData.findings)) {
-                rec.medicalData.findings.forEach((f: any) => {
-                  allFindings.push(`${f.parameter}: ${f.value} (${f.status})`);
-                });
-              }
-            }
-          });
-        }
-
-        return {
-          id: p.id,
-          gender,
-          age,
-          diagnoses: Array.from(new Set(allDiagnoses)),
-          findings: Array.from(new Set(allFindings)),
-        };
-      });
-
-      const selectedModel = model || "gemini-3.5-flash";
-      const ai = getGeminiClient();
-
-      const systemInstruction = `You are a professional cohort screening system. Your job is to extract inclusion and exclusion criteria from a researcher's text query, and identify matching patient IDs from the provided database list.
-      
-      Do semantic alignment:
-      - If the user specifies "high blood pressure", match with diagnoses like "Arterial Hypertension".
-      - If the user specifies "heart failure", match with findings like "LVEF: low" or diagnoses like "Systolic Dysfunction" or "Ischemic Heart Stress Profile".
-      - Support age filters (e.g., "over 60" matches if age is a number > 60).
-      
-      Your output MUST strictly be a JSON object with the exact keys:
-      {
-        "inclusion": ["list of extracted inclusion criteria tags/terms"],
-        "exclusion": ["list of extracted exclusion criteria tags/terms"],
-        "matchedPatientIds": ["list of matched patient IDs that fit inclusion criteria and do not violate exclusion criteria"],
-        "explanation": "A professional 2-3 sentence clinical explanation of the cohort search results, summarizing the population matched."
-      }`;
-
-      const prompt = `Researcher Query: "${query}"\n\nAnonymized Patient Database:\n${JSON.stringify(databaseSummary, null, 2)}`;
-
-      const response = await ai.models.generateContent({
-        model: selectedModel,
-        contents: prompt,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              inclusion: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              },
-              exclusion: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              },
-              matchedPatientIds: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              },
-              explanation: { type: Type.STRING }
-            },
-            required: ["inclusion", "exclusion", "matchedPatientIds", "explanation"]
-          }
-        }
-      });
-
-      const textResult = response.text;
-      if (!textResult) {
-        throw new Error("No response from cohort screening model.");
-      }
-
-      const parsed = JSON.parse(textResult.trim());
-      
-      // Filter matching secure patient objects from DB
-      const matchedPatients = Object.values(db)
-        .filter((p: any) => parsed.matchedPatientIds.includes(p.id))
-        .map((p: any) => applySecurityPolicy(p, "RESEARCHER"));
-
-      res.json({
-        success: true,
-        inclusion: parsed.inclusion,
-        exclusion: parsed.exclusion,
-        explanation: parsed.explanation,
-        matchedPatients
-      });
-    } catch (e: any) {
-      console.error("Cohort query endpoint failed:", e);
-      res.status(500).json({ error: "Failed to process cohort query: " + e.message });
-    }
-  });
 
   // Retrieve a specific patient's timeline records
   app.get("/api/patient/:patientId", async (req, res) => {

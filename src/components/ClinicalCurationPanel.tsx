@@ -63,7 +63,6 @@ export default function ClinicalCurationPanel({
       MD_PRACTITIONER: ["differential_diagnostics.md", "pharmacology.md"],
       PHARMACIST: ["pharmacology.md", "differential_diagnostics.md"],
       PATHOLOGIST: ["laboratory_pathology.md", "cohort_statistics.md"],
-      RESEARCHER: ["cohort_statistics.md", "laboratory_pathology.md"],
     };
     const defaultFiles = defaultMap[roleId] || [];
     onActiveSkillsChange(defaultFiles);
@@ -169,11 +168,6 @@ export default function ClinicalCurationPanel({
       "Classify atypical lymphocyte morphology as highly suggestive of viral etiology in the notes.",
       "Adjust Glucose reference interval to 65-105 mg/dL to match local laboratory calibration index.",
       "Evaluate microenvironmental cell margin cellular patterns precisely."
-    ],
-    RESEARCHER: [
-      "Correlate all laboratory findings with SNOMED-CT clinical codes.",
-      "Reference recent peer-reviewed longitudinal studies on diabetes cohort progressions.",
-      "Output outcomes with phenotypic validation confidence scores."
     ]
   };
 

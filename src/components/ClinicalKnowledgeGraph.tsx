@@ -15,18 +15,19 @@ import {
   CheckCircle2,
   LineChart as ChartIcon
 } from "lucide-react";
-import { HistoricalRecord, MedicalData, ChatMessage } from "../types";
+import { HistoricalRecord, MedicalData, ChatMessage, Patient } from "../types";
 
 interface ClinicalKnowledgeGraphProps {
   records: HistoricalRecord[];
   expertise?: string;
   onViewTrend?: (paramName: string) => void;
+  patient?: Patient | null;
 }
 
 interface GraphNode {
   id: string;
   label: string;
-  type: "PATIENT" | "RECORD" | "BIOMARKER" | "DIAGNOSIS" | "MEDICATION" | "DEMOGRAPHIC" | "COUNT_RX" | "COUNT_LAB";
+  type: "PATIENT" | "RECORD" | "BIOMARKER" | "DIAGNOSIS" | "MEDICATION" | "DEMOGRAPHIC" | "COUNT_RX" | "COUNT_LAB" | "BIOBANK" | "OMICS" | "IMAGING";
   val?: string;
   date?: string;
   sourceRecordId?: string;
@@ -55,6 +56,38 @@ const SIMULATED_PATIENTS = [
     gender: "Male",
     facility: "Metabolic Research Inst.",
     status: "Cohort Enrolled",
+    biobankConsent: true,
+    biobankSamples: ["Fasting Serum Aliquot", "Whole Blood DNA Extract", "Plasma Aliquot", "Urine Sample", "Saliva DNA Collection Tube"],
+    biobankConsentDate: "2025-10-14",
+    biobankInfo: {
+      consent: true,
+      consentDate: "2025-10-14",
+      bloodTubesCount: 4,
+      urineSample: true,
+      stoolSample: false,
+      otherSamples: ["Saliva DNA collection tube", "Plasma aliquot"]
+    },
+    omicsData: {
+      dnaSequenced: true,
+      rnaSequenced: false,
+      proteinProfiling: true,
+      metabolomics: true,
+      details: {
+        dnaVariantCount: "3,421,950 SNPs (WGS 30x)",
+        proteinBiomarkers: ["Troponin-T", "NT-proBNP", "Myoglobin", "ST2", "GDF-15"],
+        metabolitesIdentified: "245 lipids & fatty acids profile"
+      }
+    },
+    images: [
+      {
+        id: "img-ct-01",
+        type: "CT",
+        bodyPart: "Chest (Coronary Angiography)",
+        date: "2026-01-12",
+        findings: "Calcified atherosclerotic plaque in the left anterior descending (LAD) coronary artery (Agatston score = 240). Significant narrowing of lumen (~40%).",
+        visualDescription: "High-density calcified lesion localized along the diagonal arterial branch."
+      }
+    ],
     records: [
       {
         id: "sim-1",
@@ -117,6 +150,38 @@ const SIMULATED_PATIENTS = [
     gender: "Female",
     facility: "EHR Endocrine Registries",
     status: "Sub-cohort Synced",
+    biobankConsent: true,
+    biobankSamples: ["SST Serum Aliquot", "PBMC RNA Extract", "Fasting Urine Tube", "Stool Microbiome Swab"],
+    biobankConsentDate: "2026-02-16",
+    biobankInfo: {
+      consent: true,
+      consentDate: "2026-02-16",
+      bloodTubesCount: 6,
+      urineSample: true,
+      stoolSample: true,
+      otherSamples: ["PBMC RNA pellet", "Stool microbiome stabilizer vial"]
+    },
+    omicsData: {
+      dnaSequenced: false,
+      rnaSequenced: true,
+      proteinProfiling: true,
+      metabolomics: true,
+      details: {
+        rnaExpressedGenes: "12,450 genes expressed (IRS1 pathway downregulated)",
+        proteinBiomarkers: ["Fasting Insulin", "Adiponectin", "Leptin", "hs-CRP"],
+        metabolitesIdentified: "112 amino acid & organic acid markers"
+      }
+    },
+    images: [
+      {
+        id: "img-mri-02",
+        type: "MRI",
+        bodyPart: "Abdomen (Hepatic PDFF)",
+        date: "2026-02-18",
+        findings: "Severe hepatic steatosis with cellular intracellular lipid accumulation. Proton density fat fraction (PDFF) measured at 14.2% (Moderate-to-Severe threshold).",
+        visualDescription: "Uniform focal intensity dropout across the liver lobes on out-of-phase gradient scans."
+      }
+    ],
     records: [
       {
         id: "sim-3",
@@ -148,9 +213,19 @@ const SIMULATED_PATIENTS = [
   }
 ];
 
-export default function ClinicalKnowledgeGraph({ records, expertise, onViewTrend }: ClinicalKnowledgeGraphProps) {
+export default function ClinicalKnowledgeGraph({ records, expertise, onViewTrend, patient }: ClinicalKnowledgeGraphProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [activeFilterType, setActiveFilterType] = useState<string>("ALL");
+
+  // Resolve active patient details with fallback to SIMULATED_PATIENTS
+  const activePatient = useMemo(() => {
+    if (patient) return patient;
+    if (records && records.length > 0) {
+      const firstRecId = records[0].id;
+      return SIMULATED_PATIENTS.find(p => p.records?.some(r => r.id === firstRecId)) || null;
+    }
+    return null;
+  }, [patient, records]);
 
   // Determine active dataset (only user uploads, no simulated cohorts)
   const activeRecords = records;
@@ -178,6 +253,63 @@ export default function ClinicalKnowledgeGraph({ records, expertise, onViewTrend
       label: patientMeta.name,
       type: "PATIENT"
     });
+
+    // Synthetic Biobank, Omics and Clinical Imaging Nodes directly linked to patient
+    if (activePatient) {
+      if (activePatient.biobankInfo && activePatient.biobankConsent) {
+        const biobankNodeId = "NODE-BIOBANK";
+        nodes.push({
+          id: biobankNodeId,
+          label: "Biobank Inventory",
+          type: "BIOBANK",
+          val: `Blood: ${activePatient.biobankInfo.bloodTubesCount} Tubes | Urine: ${activePatient.biobankInfo.urineSample ? "Yes" : "No"} | Stool: ${activePatient.biobankInfo.stoolSample ? "Yes" : "No"}`
+        });
+        edges.push({
+          source: patientNodeId,
+          target: biobankNodeId,
+          relationship: "HAS_BIOBANK_INVENTORY"
+        });
+      }
+
+      if (activePatient.omicsData) {
+        const omicsNodeId = "NODE-OMICS";
+        const assays = [
+          activePatient.omicsData.dnaSequenced ? "DNA" : null,
+          activePatient.omicsData.rnaSequenced ? "RNA" : null,
+          activePatient.omicsData.proteinProfiling ? "Proteins" : null,
+          activePatient.omicsData.metabolomics ? "Metabolic" : null
+        ].filter(Boolean).join(", ");
+        nodes.push({
+          id: omicsNodeId,
+          label: "Multi-Omics Data",
+          type: "OMICS",
+          val: `Assays: ${assays} | Details: ${activePatient.omicsData.details?.dnaVariantCount || activePatient.omicsData.details?.rnaExpressedGenes || ""}`
+        });
+        edges.push({
+          source: patientNodeId,
+          target: omicsNodeId,
+          relationship: "OMICS_PROFILED"
+        });
+      }
+
+      if (activePatient.images && activePatient.images.length > 0) {
+        activePatient.images.forEach(img => {
+          const imgNodeId = `NODE-IMAGING-${img.id}`;
+          nodes.push({
+            id: imgNodeId,
+            label: `${img.type} Scan`,
+            type: "IMAGING",
+            date: img.date,
+            val: `${img.bodyPart}: ${img.findings}`
+          });
+          edges.push({
+            source: patientNodeId,
+            target: imgNodeId,
+            relationship: "HAS_CLINICAL_IMAGE"
+          });
+        });
+      }
+    }
 
     if (activeRecords.length === 0) {
       return { nodes, edges };
@@ -271,8 +403,8 @@ export default function ClinicalKnowledgeGraph({ records, expertise, onViewTrend
     });
 
     // D. Conditional Follow-up Nodes (drugs / lab tests based on active clinical user role)
-    const showDrugs = expertise === "PHARMACIST" || expertise === "MD_PRACTITIONER" || expertise === "RESEARCHER";
-    const showLabs = expertise === "PATHOLOGIST" || expertise === "MD_PRACTITIONER" || expertise === "RESEARCHER";
+    const showDrugs = expertise === "PHARMACIST" || expertise === "MD_PRACTITIONER";
+    const showLabs = expertise === "PATHOLOGIST" || expertise === "MD_PRACTITIONER";
 
     if (showDrugs) {
       uniqueMeds.forEach(med => {
@@ -321,7 +453,7 @@ export default function ClinicalKnowledgeGraph({ records, expertise, onViewTrend
     }
 
     return { nodes, edges };
-  }, [activeRecords, patientMeta, expertise]);
+  }, [activeRecords, patientMeta, expertise, activePatient]);
 
   // Layout Algorithm: Deterministic Layered Coordinates
   const arrangedNodes = useMemo(() => {
@@ -334,13 +466,25 @@ export default function ClinicalKnowledgeGraph({ records, expertise, onViewTrend
     // Layer 1: Demographics and Visits/Records (y = 115)
     layoutMap["NODE-DEMOGRAPHIC"] = { x: 130, y: 115 };
 
+    // Biobank node (x: 50, y: 75)
+    layoutMap["NODE-BIOBANK"] = { x: 50, y: 75 };
+
+    // Omics node (x: 450, y: 75)
+    layoutMap["NODE-OMICS"] = { x: 450, y: 75 };
+
+    // Imaging nodes (x: 430, y: 145 + idx * 45)
+    const imagingNodes = nodes.filter(n => n.type === "IMAGING");
+    imagingNodes.forEach((n, idx) => {
+      layoutMap[n.id] = { x: 420, y: 140 + idx * 45 };
+    });
+
     const recNodes = nodes.filter(n => n.type === "RECORD");
     const totalRecs = recNodes.length;
     recNodes.forEach((n, idx) => {
       const xSpan = 200;
       const xStart = 250;
       const x = totalRecs <= 1 
-        ? 350 
+        ? 320 
         : xStart + (idx / (totalRecs - 1)) * xSpan;
       layoutMap[n.id] = { x, y: 115 };
     });
@@ -458,6 +602,21 @@ export default function ClinicalKnowledgeGraph({ records, expertise, onViewTrend
         stroke = isSelected ? "stroke-teal-300 stroke-[2.5]" : "stroke-teal-600";
         size = 14;
         break;
+      case "BIOBANK":
+        fill = "fill-emerald-500";
+        stroke = isSelected ? "stroke-emerald-300 stroke-[2.5]" : "stroke-emerald-700";
+        size = 14;
+        break;
+      case "OMICS":
+        fill = "fill-purple-600";
+        stroke = isSelected ? "stroke-purple-300 stroke-[2.5]" : "stroke-purple-800";
+        size = 14;
+        break;
+      case "IMAGING":
+        fill = "fill-blue-500";
+        stroke = isSelected ? "stroke-blue-300 stroke-[2.5]" : "stroke-blue-750";
+        size = 14;
+        break;
     }
 
     const opacity = isDimmed ? "opacity-20" : "opacity-100";
@@ -534,7 +693,10 @@ export default function ClinicalKnowledgeGraph({ records, expertise, onViewTrend
                 { label: "Demographics", type: "DEMOGRAPHIC", color: "bg-indigo-500" },
                 { label: "Biomarkers", type: "BIOMARKER", color: "bg-sky-500" },
                 { label: "Impressions", type: "DIAGNOSIS", color: "bg-amber-500" },
-                { label: "Therapeutics", type: "MEDICATION", color: "bg-purple-500" }
+                { label: "Therapeutics", type: "MEDICATION", color: "bg-purple-500" },
+                { label: "Biobank", type: "BIOBANK", color: "bg-emerald-500" },
+                { label: "Multi-Omics", type: "OMICS", color: "bg-purple-600" },
+                { label: "Scans/Imaging", type: "IMAGING", color: "bg-blue-500" }
               ].map((filter) => {
                 // If it's a role that doesn't have certain types, hide filters
                 if (filter.type === "DEMOGRAPHIC" && expertise !== "PATIENT" && expertise !== "MD_PRACTITIONER") return null;
@@ -593,6 +755,9 @@ export default function ClinicalKnowledgeGraph({ records, expertise, onViewTrend
                   selectedNodeDetails.type === "DIAGNOSIS" ? "bg-amber-50 text-amber-800 border border-amber-150" :
                   selectedNodeDetails.type === "COUNT_RX" ? "bg-pink-50 text-pink-800 border border-pink-150" :
                   selectedNodeDetails.type === "COUNT_LAB" ? "bg-teal-50 text-teal-800 border border-teal-150" :
+                  selectedNodeDetails.type === "BIOBANK" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" :
+                  selectedNodeDetails.type === "OMICS" ? "bg-purple-50 text-purple-800 border border-purple-200" :
+                  selectedNodeDetails.type === "IMAGING" ? "bg-blue-50 text-blue-800 border border-blue-200" :
                   "bg-purple-50 text-purple-800 border border-purple-150"
                 }`}>
                   {selectedNodeDetails.type.replace("_", " ")}
@@ -601,16 +766,37 @@ export default function ClinicalKnowledgeGraph({ records, expertise, onViewTrend
                   {selectedNodeDetails.label}
                 </p>
                 {selectedNodeDetails.val && (
-                  <p className="text-xs font-mono text-stone-500 font-light">
+                  <p className="text-xs font-mono text-stone-500 font-light leading-snug">
                     {selectedNodeDetails.val}
                   </p>
                 )}
                 {selectedNodeDetails.date && (
-                  <p className="text-xs text-stone-400 font-light">
+                  <p className="text-xs text-stone-400 font-light font-mono">
                     Annotated At: {selectedNodeDetails.date}
                   </p>
                 )}
               </div>
+
+              {selectedNodeDetails.type === "BIOBANK" && (
+                <div className="bg-emerald-50/40 p-2.5 rounded-lg border border-emerald-150 text-xs mt-2 text-stone-700 leading-normal font-light">
+                  <p className="font-semibold text-emerald-950 mb-0.5">Clinical Biobank Inventory</p>
+                  This record is securely matched against the hospital biobank specimen ledger. Active consent gives secondary researchers compliance clearance.
+                </div>
+              )}
+
+              {selectedNodeDetails.type === "OMICS" && (
+                <div className="bg-purple-50/40 p-2.5 rounded-lg border border-purple-150 text-xs mt-2 text-stone-700 leading-normal font-light">
+                  <p className="font-semibold text-purple-950 mb-0.5">Genomic &amp; Molecular Datasets</p>
+                  Multi-omics profiling (WGS, RNA-Seq transcriptomics, peptide biomarkers) is hosted on secure academic high-performance compute clusters.
+                </div>
+              )}
+
+              {selectedNodeDetails.type === "IMAGING" && (
+                <div className="bg-blue-50/40 p-2.5 rounded-lg border border-blue-150 text-xs mt-2 text-stone-700 leading-normal font-light">
+                  <p className="font-semibold text-blue-950 mb-0.5">Diagnostic Scan Logs</p>
+                  Medical imaging series records (CT/MRI/X-ray) have been de-identified, registered, and are queryable by authenticated medical supervisors.
+                </div>
+              )}
 
               {/* VIEW GRAPH ON CLICK (Option to click to have graph for longitudinal changes) */}
               {onViewTrend && selectedNodeDetails.type === "BIOMARKER" && (
@@ -702,7 +888,6 @@ export default function ClinicalKnowledgeGraph({ records, expertise, onViewTrend
                 {expertise === "MD_PRACTITIONER" && "Patient -> Demographic -> Symptoms/Diagnosis -> Rx/Lab counts."}
                 {expertise === "PHARMACIST" && "Patient -> Disease/Diagnosis -> Drugs & Refills."}
                 {expertise === "PATHOLOGIST" && "Patient -> Disease/Diagnosis -> Lab Work Category."}
-                {expertise === "RESEARCHER" && "Cohort phenotypic LOINC/SNOMED indexing active."}
               </p>
             </div>
           )}
@@ -729,14 +914,6 @@ export default function ClinicalKnowledgeGraph({ records, expertise, onViewTrend
             <>
               <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Disease</div>
               <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Lab Category</div>
-            </>
-          )}
-          {expertise === "RESEARCHER" && (
-            <>
-              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Records</div>
-              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Biomarkers</div>
-              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Impressions</div>
-              <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Therapeutics</div>
             </>
           )}
         </div>

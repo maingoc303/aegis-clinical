@@ -1,3 +1,50 @@
+export interface BiobankInfo {
+  consent: boolean;
+  consentDate?: string;
+  bloodTubesCount?: number;
+  urineSample?: boolean;
+  stoolSample?: boolean;
+  otherSamples?: string[];
+}
+
+export interface OmicsData {
+  dnaSequenced?: boolean;
+  rnaSequenced?: boolean;
+  proteinProfiling?: boolean;
+  metabolomics?: boolean;
+  details?: {
+    dnaVariantCount?: string;
+    rnaExpressedGenes?: string;
+    proteinBiomarkers?: string[];
+    metabolitesIdentified?: string;
+  };
+}
+
+export interface ClinicalImage {
+  id: string;
+  type: "Xray" | "MRI" | "CT" | string;
+  bodyPart: string;
+  date: string;
+  findings: string;
+  visualDescription?: string;
+}
+
+export interface Patient {
+  id: string;
+  name: string;
+  birth: string;
+  gender: string;
+  facility: string;
+  status: string;
+  biobankConsent?: boolean;
+  biobankSamples?: string[];
+  biobankConsentDate?: string;
+  biobankInfo?: BiobankInfo;
+  omicsData?: OmicsData;
+  images?: ClinicalImage[];
+  records: HistoricalRecord[];
+}
+
 export interface MedicalData {
   patientName?: string;
   patientAge?: string;

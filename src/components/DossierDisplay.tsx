@@ -78,7 +78,7 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
     }
   };
 
-  const isAnonymized = clinicalExpertise === "PHARMACIST" || clinicalExpertise === "PATHOLOGIST" || clinicalExpertise === "RESEARCHER";
+  const isAnonymized = clinicalExpertise === "PHARMACIST" || clinicalExpertise === "PATHOLOGIST";
   const isPharmacist = clinicalExpertise === "PHARMACIST";
   const isPathologist = clinicalExpertise === "PATHOLOGIST";
 
@@ -182,10 +182,7 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
               <p className="text-sm text-stone-650 leading-relaxed font-light">
                 {isPharmacist 
                   ? "Restricted View: Detailed medical text summaries are omitted for Pharmacist privacy compliance." 
-                  : (clinicalExpertise === "RESEARCHER" 
-                      ? "Restricted View: Detailed case summary masked for researcher privacy compliance." 
-                      : medicalData.summary
-                    )}
+                  : medicalData.summary}
               </p>
             </div>
           </div>
