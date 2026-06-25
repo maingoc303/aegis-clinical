@@ -137,7 +137,7 @@ export default function UploadZone({
 
   // Submit joint dossier payload to the backend
   const triggerCombinedDossierAnalysis = async () => {
-    if (!docFile && !imageFile) return;
+    if (!docFile && !imageFile && !medicalHistory.trim()) return;
 
     onAnalysisStarted();
 
@@ -405,9 +405,9 @@ export default function UploadZone({
         
         <button
           onClick={triggerCombinedDossierAnalysis}
-          disabled={(!docFile && !imageFile) || isProcessing}
+          disabled={(!docFile && !imageFile && !medicalHistory.trim()) || isProcessing}
           className={`px-5 py-3 rounded-xl shadow-sm text-xs font-semibold tracking-wide flex items-center justify-center gap-2 transition-all cursor-pointer ${
-            (!docFile && !imageFile) || isProcessing
+            (!docFile && !imageFile && !medicalHistory.trim()) || isProcessing
               ? "bg-stone-100 text-stone-400 cursor-not-allowed"
               : "bg-stone-950 text-white hover:bg-emerald-700 active:scale-[0.982]"
           }`}

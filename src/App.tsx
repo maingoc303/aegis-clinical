@@ -6,7 +6,6 @@ import ChatPanel from "./components/ChatPanel";
 import LongitudinalPanel from "./components/LongitudinalPanel";
 import { MedicalData, UploadedFileState, HistoricalRecord, ChatMessage } from "./types";
 import RegulatoryConsentModal from "./components/RegulatoryConsentModal";
-import ClinicalCurationPanel from "./components/ClinicalCurationPanel";
 import PatientDatabaseConsole from "./components/PatientDatabaseConsole";
 import SummaryReportModal from "./components/SummaryReportModal";
 
@@ -165,8 +164,11 @@ export default function App() {
     setActivePatientId(patientId);
     setHistoryRecords(records);
     setIsNewPatient(records.length === 0);
+    setAnalysisError(null);
+    setSessionKey((prev) => prev + 1);
     try {
       localStorage.setItem("aegis_longitudinal_records", JSON.stringify(records));
+      localStorage.removeItem("aegis_current_chat");
     } catch {}
 
     // Hydrate workspace with the latest report if history is available
@@ -343,6 +345,8 @@ export default function App() {
               <div className="flex gap-1.5 flex-wrap">
                 {[
                   { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash", desc: "Balanced speed & accuracy" },
+                  { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", desc: "Highly stable production model" },
+                  { id: "gemini-flash-latest", name: "Gemini Flash Latest", desc: "Standard latest flash model" },
                   { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro", desc: "Expert clinical reasoning capability" },
                   { id: "gemini-3.1-flash-lite", name: "Gemini 1.5 Lite", desc: "Ultra-fast summaries" }
                 ].map((m) => (
@@ -388,16 +392,8 @@ export default function App() {
           activePatientId={activePatientId}
           setActivePatientId={setActivePatientId}
           historyRecords={historyRecords}
-        />
-
-        {/* Clinical Expertise & Skills Curation Console */}
-        <ClinicalCurationPanel
-          currentExpertise={clinicalExpertise}
-          onExpertiseChange={handleExpertiseChange}
-          manualCurationGuidance={curationGuidance}
-          onGuidanceChange={handleGuidanceChange}
-          activeSkills={activeSkills}
-          onActiveSkillsChange={handleActiveSkillsChange}
+          consentGranted={consentGranted}
+          onToggleConsent={handleToggleConsent}
         />
 
         {/* Core Layout Split */}

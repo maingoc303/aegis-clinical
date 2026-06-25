@@ -324,9 +324,54 @@ const getGeminiClient = () => {
   });
 };
 
+async function generateContentWithFallback(
+  ai: ReturnType<typeof getGeminiClient>,
+  options: {
+    model: string;
+    contents: any;
+    config?: any;
+  }
+) {
+  const primaryModel = options.model;
+  const fallbackModels = [
+    "gemini-2.5-flash",
+    "gemini-flash-latest",
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
+  ];
+  
+  const queue = [primaryModel, ...fallbackModels.filter(m => m !== primaryModel)];
+  
+  let primaryError: any = null;
+  let lastError: any = null;
+  
+  for (let i = 0; i < queue.length; i++) {
+    const modelName = queue[i];
+    try {
+      console.log(`[Gemini] Attempting content generation with model (${i + 1}/${queue.length}): ${modelName}`);
+      const result = await ai.models.generateContent({
+        ...options,
+        model: modelName,
+      });
+      console.log(`[Gemini] Generation succeeded with model: ${modelName}`);
+      return result;
+    } catch (err: any) {
+      if (i === 0) {
+        primaryError = err;
+      }
+      lastError = err;
+      const errMsg = err?.message || err || "";
+      console.warn(`[Gemini] Model ${modelName} failed. Error:`, errMsg);
+    }
+  }
+  
+  const finalError = primaryError || lastError || new Error("All Gemini fallback models exhausted and failed.");
+  throw finalError;
+}
+
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+  const PORT = 3000;
 
   // Initialize the persistent patients file database
   await initializeDatabase();
@@ -489,12 +534,12 @@ async function startServer() {
     try {
       const { documentFile, imageFile, medicalHistory, model, expertise, manualCurationGuidance, activeSkills } = req.body;
 
-      if (!documentFile && !imageFile) {
-        return res.status(400).json({ error: "Please upload at least one clinical document or a medical imaging file to analyze." });
+      if (!documentFile && !imageFile && !medicalHistory?.trim()) {
+        return res.status(400).json({ error: "Please provide either a clinical document, a medical imaging file, or patient medical history to analyze." });
       }
 
       let selectedModel = model || "gemini-3.5-flash";
-      const validModels = ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite"];
+      const validModels = ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-flash-latest"];
       if (!validModels.includes(selectedModel)) {
         selectedModel = "gemini-3.5-flash";
       }
@@ -629,7 +674,7 @@ You MUST extract and integrate findings into a rigorous JSON compliance:
   - purpose: string (optional)
 6. "criticalAlerts": Critical out-of-range clinical alerts or urgent flags requiring immediate physician notice (e.g. critically high potassium, severe pneumonia, tissue malignancy risks). Empty array if none.`;
 
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithFallback(ai, {
         model: selectedModel,
         contents: { parts },
         config: {
@@ -711,7 +756,7 @@ You MUST extract and integrate findings into a rigorous JSON compliance:
       }
 
       let selectedModel = model || "gemini-3.5-flash";
-      const validModels = ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite"];
+      const validModels = ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-flash-latest"];
       if (!validModels.includes(selectedModel)) {
         selectedModel = "gemini-3.5-flash";
       }
@@ -762,7 +807,7 @@ Please refer back to this document to address their questions accurately and cus
       }));
 
       // Generate Chat completion
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithFallback(ai, {
         model: selectedModel,
         contents: geminiContents,
         config: {
@@ -789,7 +834,7 @@ Please refer back to this document to address their questions accurately and cus
       }
 
       let selectedModel = model || "gemini-3.5-flash";
-      const validModels = ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite"];
+      const validModels = ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-flash-latest"];
       if (!validModels.includes(selectedModel)) {
         selectedModel = "gemini-3.5-flash";
       }
@@ -841,7 +886,7 @@ Operational Protocols:
 - Never write specific drug dosages or authorized prescriptions.
 - Always conclude with a strong standard warning advising consulting a physical MD for actual medical actions.`;
 
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithFallback(ai, {
         model: selectedModel,
         contents: [
           { text: chronologyExcerpt },
