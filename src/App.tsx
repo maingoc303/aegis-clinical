@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Activity, ShieldAlert, BookOpen, Clock, HeartHandshake, Cpu, LogOut } from "lucide-react";
 import UploadZone from "./components/UploadZone";
 import DossierDisplay from "./components/DossierDisplay";
@@ -8,13 +8,20 @@ import { MedicalData, UploadedFileState, HistoricalRecord, ChatMessage } from ".
 import RegulatoryConsentModal from "./components/RegulatoryConsentModal";
 import PatientDatabaseConsole from "./components/PatientDatabaseConsole";
 import SummaryReportModal from "./components/SummaryReportModal";
+import { t } from "./translations";
 
 export default function App() {
   const [medicalData, setMedicalData] = useState<MedicalData | null>(null);
+  const [activeMedicalDataEn, setActiveMedicalDataEn] = useState<MedicalData | null>(null);
+  const [activeMedicalDataVi, setActiveMedicalDataVi] = useState<MedicalData | null>(null);
   const [documentFile, setDocumentFile] = useState<UploadedFileState | null>(null);
   const [imageFile, setImageFile] = useState<UploadedFileState | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // Active patient tracking state
+  const [activePatientId, setActivePatientId] = useState<string | null>(null);
+  const [isNewPatient, setIsNewPatient] = useState<boolean>(false);
 
   // Settings: Model selection
   const [selectedModel, setSelectedModel] = useState<string>("gemini-3.5-flash");
@@ -44,6 +51,80 @@ export default function App() {
       return ["patient_care.md"];
     }
   });
+
+  const [appLanguage, setAppLanguage] = useState<"en" | "vi" | string>(() => {
+    try {
+      return localStorage.getItem("aegis_app_language") || "en";
+    } catch {
+      return "en";
+    }
+  });
+
+  const [medicalDataLanguage, setMedicalDataLanguage] = useState<string>(() => {
+    try {
+      return localStorage.getItem("aegis_app_language") || "en";
+    } catch {
+      return "en";
+    }
+  });
+  const [isTranslating, setIsTranslating] = useState<boolean>(false);
+
+  const handleLanguageChange = (lang: string) => {
+    setAppLanguage(lang);
+    try {
+      localStorage.setItem("aegis_app_language", lang);
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (medicalData && medicalDataLanguage !== appLanguage && !isTranslating) {
+      if (appLanguage === "vi" && activeMedicalDataVi) {
+        setMedicalData(activeMedicalDataVi);
+        setMedicalDataLanguage("vi");
+        return;
+      }
+      if (appLanguage === "en" && activeMedicalDataEn) {
+        setMedicalData(activeMedicalDataEn);
+        setMedicalDataLanguage("en");
+        return;
+      }
+
+      const translateDossier = async () => {
+        setIsTranslating(true);
+        try {
+          const response = await fetch("/api/translate", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              type: "medical-data",
+              content: medicalData,
+              targetLanguage: appLanguage,
+            }),
+          });
+          if (response.ok) {
+            const result = await response.json();
+            if (result.success && result.translated) {
+              const translatedWithId = { ...result.translated, patientId: activePatientId || result.translated.patientId };
+              setMedicalData(translatedWithId);
+              setMedicalDataLanguage(appLanguage);
+              if (appLanguage === "en") {
+                setActiveMedicalDataEn(translatedWithId);
+              } else {
+                setActiveMedicalDataVi(translatedWithId);
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Failed to translate dossier:", err);
+        } finally {
+          setIsTranslating(false);
+        }
+      };
+      translateDossier();
+    }
+  }, [appLanguage, medicalData, medicalDataLanguage, activeMedicalDataEn, activeMedicalDataVi, activePatientId, isTranslating]);
 
   const handleExpertiseChange = (roleId: string) => {
     setClinicalExpertise(roleId);
@@ -98,10 +179,6 @@ export default function App() {
     }
   });
 
-  // Active patient tracking state
-  const [activePatientId, setActivePatientId] = useState<string | null>(null);
-  const [isNewPatient, setIsNewPatient] = useState<boolean>(false);
-
   // Summary Report & Session Logout states
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState<boolean>(false);
   const [sessionKey, setSessionKey] = useState<number>(0);
@@ -124,6 +201,8 @@ export default function App() {
         fileName: documentFile ? documentFile.name : undefined,
         imageName: imageFile ? imageFile.name : undefined,
         medicalData: medicalData,
+        medicalDataEn: activeMedicalDataEn || (appLanguage === "en" ? medicalData : undefined),
+        medicalDataVi: activeMedicalDataVi || (appLanguage === "vi" ? medicalData : undefined),
         chatHistory: chatHistory,
       };
 
@@ -174,11 +253,19 @@ export default function App() {
     // Hydrate workspace with the latest report if history is available
     if (records.length > 0) {
       const latest = records[records.length - 1];
-      setMedicalData(latest.medicalData);
+      const data = appLanguage === "vi" 
+        ? (latest.medicalDataVi || latest.medicalData) 
+        : (latest.medicalDataEn || latest.medicalData);
+      setMedicalData(data);
+      setMedicalDataLanguage(appLanguage);
+      setActiveMedicalDataEn(latest.medicalDataEn || (appLanguage === "en" ? latest.medicalData : null));
+      setActiveMedicalDataVi(latest.medicalDataVi || (appLanguage === "vi" ? latest.medicalData : null));
       setDocumentFile(latest.fileName ? { name: latest.fileName, size: 0, type: "application/pdf", base64: "" } : null);
       setImageFile(latest.imageName ? { name: latest.imageName, size: 0, type: "image/png", base64: "" } : null);
     } else {
       setMedicalData(null);
+      setActiveMedicalDataEn(null);
+      setActiveMedicalDataVi(null);
       setDocumentFile(null);
       setImageFile(null);
     }
@@ -189,7 +276,7 @@ export default function App() {
     setAnalysisError(null);
   };
 
-  const handleAnalysisSuccess = (
+  const handleAnalysisSuccess = async (
     data: MedicalData,
     doc: UploadedFileState | null,
     img: UploadedFileState | null,
@@ -204,14 +291,23 @@ export default function App() {
     };
 
     setMedicalData(enrichedData);
+    setMedicalDataLanguage(appLanguage);
+    if (appLanguage === "en") {
+      setActiveMedicalDataEn(enrichedData);
+      setActiveMedicalDataVi(null);
+    } else {
+      setActiveMedicalDataVi(enrichedData);
+      setActiveMedicalDataEn(null);
+    }
     setDocumentFile(doc);
     setImageFile(img);
     setIsProcessing(false);
 
     // Save to browser logging list if granted
     if (consentGranted) {
+      const recordId = `rec-${Date.now()}`;
       const newRecord: HistoricalRecord = {
-        id: `rec-${Date.now()}`,
+        id: recordId,
         date: reportDate,
         fileName: doc ? doc.name : undefined,
         imageName: img ? img.name : undefined,
@@ -224,12 +320,57 @@ export default function App() {
         return updated;
       });
 
-      // Persist to backend JSON database for remote syncing
+      // Persist initial record to backend database
       saveRecordToDatabase(targetPatientId, newRecord);
       
       // Auto-set the active patient ID if not set
       if (!activePatientId) {
         setActivePatientId(targetPatientId);
+      }
+
+      // Automatically translate in background to make sure we persist both languages
+      try {
+        const targetLang = appLanguage === "en" ? "vi" : "en";
+        const response = await fetch("/api/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "medical-data",
+            content: enrichedData,
+            targetLanguage: targetLang
+          })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.translated) {
+            const translatedWithId = { ...result.translated, patientId: targetPatientId };
+            const medEn = appLanguage === "en" ? enrichedData : translatedWithId;
+            const medVi = appLanguage === "vi" ? enrichedData : translatedWithId;
+
+            if (appLanguage === "en") {
+              setActiveMedicalDataVi(translatedWithId);
+            } else {
+              setActiveMedicalDataEn(translatedWithId);
+            }
+
+            const updatedRecord: HistoricalRecord = {
+              ...newRecord,
+              medicalDataEn: medEn,
+              medicalDataVi: medVi
+            };
+
+            setHistoryRecords((prev) => {
+              const updated = prev.map((r) => r.id === recordId ? updatedRecord : r);
+              localStorage.setItem("aegis_longitudinal_records", JSON.stringify(updated));
+              return updated;
+            });
+
+            saveRecordToDatabase(targetPatientId, updatedRecord);
+          }
+        }
+      } catch (err) {
+        console.error("Auto background translation failed:", err);
       }
     }
   };
@@ -301,19 +442,33 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4 text-xs font-mono text-stone-500">
+            {/* Language Selector */}
+            <div className="flex items-center gap-1.5 border-r border-stone-200 pr-3 h-6">
+              <span className="text-[10px] uppercase text-stone-400 font-bold hidden sm:inline-block">Language:</span>
+              <select
+                id="language-select"
+                value={appLanguage}
+                onChange={(e) => handleLanguageChange(e.target.value)}
+                className="bg-transparent border-0 text-stone-700 font-semibold cursor-pointer focus:ring-0 text-xs py-0 px-1"
+              >
+                <option value="en">English 🇬🇧</option>
+                <option value="vi">Tiếng Việt 🇻🇳</option>
+              </select>
+            </div>
+
             <div className="hidden md:flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Multi-Source Gemini Core Node Active</span>
+              <span>{appLanguage === "vi" ? "Nút Chính Gemini Đa Nguồn Đang Hoạt Động" : "Multi-Source Gemini Core Node Active"}</span>
             </div>
 
             <button
               id="logout-btn"
               onClick={() => setIsSummaryModalOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-stone-50 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 font-semibold cursor-pointer transition-all shadow-sm"
-              title="Logout & End Session"
+              title={appLanguage === "vi" ? "Kết thúc phiên & lưu trữ" : "Logout & End Session"}
             >
               <LogOut size={13} />
-              <span>End Session</span>
+              <span>{appLanguage === "vi" ? "Kết Thúc Phiên" : "End Session"}</span>
             </button>
           </div>
         </div>
@@ -326,10 +481,12 @@ export default function App() {
         <div id="welcome-header" className="space-y-4 border-b border-stone-200/50 pb-6">
           <div className="space-y-1">
             <h1 className="font-serif text-3xl md:text-4xl font-semibold tracking-tight text-stone-950">
-              Aegis Intelligence <span className="text-stone-500 italic font-normal">Dossier</span>
+              Aegis {appLanguage === "vi" ? "Hồ Sơ Trí Tuệ" : "Intelligence Dossier"} <span className="text-stone-500 italic font-normal">Clinical</span>
             </h1>
             <p className="text-stone-500 text-sm max-w-3xl leading-relaxed font-light">
-              An advanced physical/radiological &amp; clinical text metadata intelligence system. Securely transcribe and aggregate diagnostic sheets, imaging scans (X-Rays, CTs, MRIs), and medical histories into unified, context-synced insights.
+              {appLanguage === "vi" 
+                ? "Hệ thống trí tuệ lâm sàng và phân tích chẩn đoán đa phương thức tiên tiến. Trích xuất và tích hợp an toàn các tệp báo cáo, hình ảnh chẩn đoán (X-Quang, CT, MRI) và tiền sử bệnh án thành các thông tin chi tiết đồng bộ."
+                : "An advanced physical/radiological & clinical text metadata intelligence system. Securely transcribe and aggregate diagnostic sheets, imaging scans (X-Rays, CTs, MRIs), and medical histories into unified, context-synced insights."}
             </p>
           </div>
 
@@ -340,7 +497,7 @@ export default function App() {
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <span className="text-xs font-mono font-semibold text-stone-600 flex items-center gap-1.5 shrink-0">
                 <Cpu size={14} className="text-emerald-600" />
-                Selected Model:
+                {appLanguage === "vi" ? "Mô Hình Đang Chọn:" : "Selected Model:"}
               </span>
               <div className="flex gap-1.5 flex-wrap">
                 {[
@@ -376,8 +533,12 @@ export default function App() {
                 className="w-4 h-4 rounded accent-emerald-600 border-stone-300 focus:ring-emerald-500 cursor-pointer"
               />
               <label htmlFor="grant-archive-consent" className="text-xs text-stone-700 cursor-pointer select-none">
-                <span className="font-semibold text-stone-905 block">Enable Longitudinal Data Bank</span>
-                <span className="block text-[10px] text-stone-400 font-light">Saves analyzed dossiers locally inside the browser timeline</span>
+                <span className="font-semibold text-stone-905 block">
+                  {appLanguage === "vi" ? "Bật Theo Dõi Lịch Sử Bệnh Án" : "Enable Longitudinal Data Bank"}
+                </span>
+                <span className="block text-[10px] text-stone-400 font-light">
+                  {appLanguage === "vi" ? "Lưu trữ tự động các kết quả phân tích vào dòng thời gian của bệnh nhân" : "Saves analyzed dossiers locally inside the browser timeline"}
+                </span>
               </label>
             </div>
 
@@ -394,6 +555,7 @@ export default function App() {
           historyRecords={historyRecords}
           consentGranted={consentGranted}
           onToggleConsent={handleToggleConsent}
+          language={appLanguage}
         />
 
         {/* Core Layout Split */}
@@ -412,6 +574,7 @@ export default function App() {
               expertise={clinicalExpertise}
               manualCurationGuidance={curationGuidance}
               activeSkills={activeSkills}
+              language={appLanguage}
             />
 
             {analysisError && (
@@ -437,11 +600,21 @@ export default function App() {
             )}
 
             {/* Structured Medical Record output */}
+            {isTranslating && (
+              <div className="p-6 bg-emerald-50/50 border border-emerald-150 rounded-xl text-stone-900 flex items-center justify-center gap-3 animate-pulse mb-6 shadow-sm">
+                <div className="animate-spin h-4 w-4 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full" />
+                <span className="text-xs font-mono font-medium text-emerald-800">
+                  {appLanguage === "vi" ? "Đang dịch toàn bộ hồ sơ y tế sang Tiếng Việt..." : "Translating entire clinical dossier to English..."}
+                </span>
+              </div>
+            )}
+
             <DossierDisplay 
               medicalData={medicalData} 
               documentFile={documentFile} 
               imageFile={imageFile}
               clinicalExpertise={clinicalExpertise}
+              language={appLanguage}
             />
 
           </div>
@@ -456,28 +629,37 @@ export default function App() {
               expertise={clinicalExpertise}
               manualCurationGuidance={curationGuidance}
               activeSkills={activeSkills}
+              language={appLanguage}
             />
 
             {/* Quick Informational Tips Card */}
             <div className="bg-white border border-stone-200 rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.01)] space-y-4">
               <h4 className="text-[10px] font-mono uppercase tracking-widest text-stone-400 font-bold flex items-center gap-1.5">
-                <BookOpen size={12} /> Workspace Integrity Protocol
+                <BookOpen size={12} /> {appLanguage === "vi" ? "Giao thức Toàn vẹn Không gian làm việc" : "Workspace Integrity Protocol"}
               </h4>
               <div className="grid grid-cols-1 gap-3.5 text-xs">
                 
                 <div className="flex gap-2.5 items-start">
                   <Clock size={15} className="text-stone-500 shrink-0 mt-0.5" />
                   <p className="text-stone-600 leading-normal font-light">
-                    <span className="font-medium text-stone-850 block">Conjoint Multi-Modal Synced</span>
-                    All chatbots remain fully linked to the structured findings matrix AND any visual observations extracted from your scans.
+                    <span className="font-medium text-stone-850 block">
+                      {appLanguage === "vi" ? "Đồng bộ Đa Phương Thức Liên Kết" : "Conjoint Multi-Modal Synced"}
+                    </span>
+                    {appLanguage === "vi" 
+                      ? "Tất cả các chatbot vẫn được liên kết đầy đủ với ma trận kết quả có cấu trúc VÀ bất kỳ quan sát trực quan nào được trích xuất từ các bản quét của bạn."
+                      : "All chatbots remain fully linked to the structured findings matrix AND any visual observations extracted from your scans."}
                   </p>
                 </div>
 
                 <div className="flex gap-2.5 items-start">
                   <HeartHandshake size={15} className="text-stone-500 shrink-0 mt-0.5" />
                   <p className="text-stone-600 leading-normal font-light">
-                    <span className="font-medium text-stone-850 block">Privacy-First Execution</span>
-                    Files are evaluated dynamically server-side via state-of-the-art secure tunnels and never cached.
+                    <span className="font-medium text-stone-850 block">
+                      {appLanguage === "vi" ? "Thực thi Ưu tiên Quyền riêng tư" : "Privacy-First Execution"}
+                    </span>
+                    {appLanguage === "vi"
+                      ? "Các tệp được đánh giá động phía máy chủ thông qua các đường truyền bảo mật tiên tiến và không bao giờ bị lưu vào bộ nhớ đệm lâu dài."
+                      : "Files are evaluated dynamically server-side via state-of-the-art secure tunnels and never cached."}
                   </p>
                 </div>
 
@@ -497,6 +679,7 @@ export default function App() {
             expertise={clinicalExpertise}
             isNewPatient={isNewPatient}
             activePatientId={activePatientId}
+            language={appLanguage}
           />
         </div>
 
@@ -508,6 +691,7 @@ export default function App() {
         onClose={() => setIsConsentModalOpen(false)}
         onAccept={handleAcceptRegulations}
         onDecline={handleDeclineRegulations}
+        language={appLanguage}
       />
 
       {/* Summary Report & Logout session modal */}
@@ -519,6 +703,7 @@ export default function App() {
         activePatientId={activePatientId}
         clinicalExpertise={clinicalExpertise}
         isNewPatient={isNewPatient}
+        language={appLanguage}
       />
 
       {/* 3. Bottom Footer */}
@@ -532,7 +717,9 @@ export default function App() {
             </div>
           </div>
           <p className="text-[10px] text-stone-500 leading-relaxed font-light text-center sm:text-left">
-            Disclaimer: Aegis Clinical and its AI-assistant technology are tools for parsing metadata and translating clinical vocabulary. They do not constitute official clinical medical advice, prescriptive commands, or diagnostic verdicts. Always consult directly with a certified healthcare physician or physician's assistant to analyze your reports.
+            {appLanguage === "vi"
+              ? "Tuyên bố miễn trừ trách nhiệm: Aegis Clinical và công nghệ trợ lý AI của nó là các công cụ để phân tích cú pháp siêu dữ liệu và dịch từ vựng lâm sàng. Chúng không cấu thành lời khuyên y tế lâm sàng chính thức, mệnh lệnh kê đơn hoặc phán quyết chẩn đoán. Luôn luôn tham khảo ý kiến trực tiếp với bác sĩ chuyên khoa hoặc trợ lý bác sĩ được chứng nhận để phân tích các báo cáo của bạn."
+              : "Disclaimer: Aegis Clinical and its AI-assistant technology are tools for parsing metadata and translating clinical vocabulary. They do not constitute official clinical medical advice, prescriptive commands, or diagnostic verdicts. Always consult directly with a certified healthcare physician or physician's assistant to analyze your reports."}
           </p>
         </div>
       </footer>

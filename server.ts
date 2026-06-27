@@ -532,7 +532,7 @@ async function startServer() {
   // Unified integrated dossier analysis endpoint
   app.post("/api/analyze-medical-dossier", async (req, res) => {
     try {
-      const { documentFile, imageFile, medicalHistory, model, expertise, manualCurationGuidance, activeSkills } = req.body;
+      const { documentFile, imageFile, medicalHistory, model, expertise, manualCurationGuidance, activeSkills, language } = req.body;
 
       if (!documentFile && !imageFile && !medicalHistory?.trim()) {
         return res.status(400).json({ error: "Please provide either a clinical document, a medical imaging file, or patient medical history to analyze." });
@@ -674,11 +674,16 @@ You MUST extract and integrate findings into a rigorous JSON compliance:
   - purpose: string (optional)
 6. "criticalAlerts": Critical out-of-range clinical alerts or urgent flags requiring immediate physician notice (e.g. critically high potassium, severe pneumonia, tissue malignancy risks). Empty array if none.`;
 
+      let adjustedSystemInstruction = systemInstruction;
+      if (language === "vi") {
+        adjustedSystemInstruction += "\n\n[CRITICAL LANGUAGE MANDATE - VIETNAMESE (TIẾNG VIỆT)]:\nYou MUST output all textual descriptions, notes, summaries, diagnoses, findings, parameter descriptions, image observations, recommendations, and critical alerts in Vietnamese (Tiếng Việt). However, standard clinical biomarker abbreviations and units (e.g., 'HbA1c', 'WBC', 'mg/dL', 'g/dL', etc.) should remain in standard clinical nomenclature.";
+      }
+
       const response = await generateContentWithFallback(ai, {
         model: selectedModel,
         contents: { parts },
         config: {
-          systemInstruction,
+          systemInstruction: adjustedSystemInstruction,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -749,7 +754,7 @@ You MUST extract and integrate findings into a rigorous JSON compliance:
   // AI Medical Chatbot endpoint
   app.post("/api/medical-chat", async (req, res) => {
     try {
-      const { messages, medicalContext, model, expertise, manualCurationGuidance, activeSkills } = req.body;
+      const { messages, medicalContext, model, expertise, manualCurationGuidance, activeSkills, language } = req.body;
 
       if (!messages || !Array.isArray(messages)) {
         return res.status(400).json({ error: "Missing or invalid 'messages' array in request body." });
@@ -800,6 +805,10 @@ Please refer back to this document to address their questions accurately and cus
 3. Support clean, beautiful markdown. Use bolding, lists, bullet points, interactive tables, and clear headers to maintain pristine legibility.
 4. If some values look highly critical, highlight them promptly.`;
 
+      if (language === "vi") {
+        chatSystemInstruction += `\n\n[CRITICAL LANGUAGE MANDATE - VIETNAMESE (TIẾNG VIỆT)]:\nYou MUST output your entire conversation, responses, clinical explanations, diagnoses details, recommendations, and advice in Vietnamese (Tiếng Việt). Keep standard clinical abbreviations and measurement units (like 'HbA1c', 'dL', 'mg', etc.) in standard international nomenclature, but provide clear explanations in Vietnamese.`;
+      }
+
       // Structure messages list into Gemini's expected Content objects
       const geminiContents = messages.map((m: any) => ({
         role: m.role === "model" ? "model" : m.role === "assistant" ? "model" : "user",
@@ -827,7 +836,7 @@ Please refer back to this document to address their questions accurately and cus
   // AI Longitudinal Trend Analyzer endpoint
   app.post("/api/analyze-longitudinal", async (req, res) => {
     try {
-      const { records, model } = req.body;
+      const { records, model, language } = req.body;
 
       if (!records || !Array.isArray(records) || records.length === 0) {
         return res.status(400).json({ error: "Please upload and process at least one report to perform longitudinal analysis." });
@@ -886,6 +895,11 @@ Operational Protocols:
 - Never write specific drug dosages or authorized prescriptions.
 - Always conclude with a strong standard warning advising consulting a physical MD for actual medical actions.`;
 
+      let adjustedLongitudinalSystemInstruction = longitudinalSystemInstruction;
+      if (language === "vi") {
+        adjustedLongitudinalSystemInstruction += `\n\n[CRITICAL LANGUAGE MANDATE - VIETNAMESE (TIẾNG VIỆT)]:\nYou MUST output the entire longitudinal progression report in Vietnamese (Tiếng Việt), including all headers, analyses, trend explanations, and healthy suggestions. Keep standard clinical measurement abbreviations and units (like 'HbA1c', 'mg/dL', 'g/dL') in standard clinical nomenclature.`;
+      }
+
       const response = await generateContentWithFallback(ai, {
         model: selectedModel,
         contents: [
@@ -893,7 +907,7 @@ Operational Protocols:
           { text: "Analyze the chronological sequence above and output the highly comprehensive Markdown report accordingly." }
         ],
         config: {
-          systemInstruction: longitudinalSystemInstruction,
+          systemInstruction: adjustedLongitudinalSystemInstruction,
           temperature: 0.25,
         }
       });
@@ -903,6 +917,97 @@ Operational Protocols:
     } catch (err: any) {
       console.error("Longitudinal analysis failure:", err);
       res.status(500).json({ error: err.message || "An error occurred during longitudinal trend synthesis." });
+    }
+  });
+
+  // Real-time Translate API endpoint for dossiers, chat history, or markdown reports
+  app.post("/api/translate", async (req, res) => {
+    try {
+      const { type, content, targetLanguage } = req.body;
+
+      if (!content) {
+        return res.status(400).json({ error: "Missing content to translate." });
+      }
+
+      const ai = getGeminiClient();
+      const isVi = targetLanguage === "vi";
+      const targetLangName = isVi ? "Vietnamese (Tiếng Việt)" : "English (English)";
+
+      if (type === "medical-data") {
+        // Translate structured MedicalData
+        const systemInstruction = `You are an expert clinical medical translator translating from ${isVi ? "English to Vietnamese" : "Vietnamese to English"}.
+Translate the entire clinical medical dossier JSON object provided by the user.
+CRITICAL MANDATES:
+1. Return ONLY the valid JSON matching the schema provided, with no extra tags, Markdown formatting, or wrappers.
+2. Standard biomarkers, chemical abbreviations, and units (e.g., 'HbA1c', 'WBC', 'RBC', 'mg/dL', 'g/dL', etc.) should remain in their standard clinical nomenclature.
+3. Keep all other keys, structure, IDs, and fields exactly identical, but translate the values of:
+   - summary
+   - imageObservations
+   - findings[].parameter
+   - findings[].notes
+   - findings[].status (e.g. translate NORMAL to BÌNH THƯỜNG / HIGH to CAO / LOW to THẤP if translating to Vietnamese, or vice-versa)
+   - diagnoses
+   - medicationsAndRecommendations[].item
+   - medicationsAndRecommendations[].dosageOrInstructions
+   - medicationsAndRecommendations[].purpose
+   - criticalAlerts
+   - documentType
+   `;
+
+        const response = await generateContentWithFallback(ai, {
+          model: "gemini-3.5-flash",
+          contents: [
+            { text: JSON.stringify(content) }
+          ],
+          config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+          }
+        });
+
+        const translatedData = JSON.parse(response.text.trim());
+        return res.json({ success: true, translated: translatedData });
+      } else if (type === "chat-messages") {
+        // Translate array of ChatMessage
+        const systemInstruction = `You are a professional medical translator. Translate the array of chat messages to ${targetLangName}.
+Keep the message structure (id, role, timestamp, content) exactly as is, but translate the "content" of each message.
+Make sure the translation sounds professional, natural, and clinically accurate.
+Return ONLY valid JSON array matching the input structure. Do not wrap in markdown tags.`;
+
+        const response = await generateContentWithFallback(ai, {
+          model: "gemini-3.5-flash",
+          contents: [
+            { text: JSON.stringify(content) }
+          ],
+          config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+          }
+        });
+
+        const translatedMessages = JSON.parse(response.text.trim());
+        return res.json({ success: true, translated: translatedMessages });
+      } else {
+        // Translate standard text/markdown report
+        const systemInstruction = `You are a professional medical and clinical translator. Translate the given Markdown text accurately to ${targetLangName}.
+Preserve all formatting, markdown structures, bolding, headers, tables, bullet points, and clinical units exactly.
+Only translate the text sentences, headings, and clinical remarks naturally into ${targetLangName}.`;
+
+        const response = await generateContentWithFallback(ai, {
+          model: "gemini-3.5-flash",
+          contents: [
+            { text: content }
+          ],
+          config: {
+            systemInstruction,
+          }
+        });
+
+        return res.json({ success: true, translated: response.text });
+      }
+    } catch (error: any) {
+      console.error("Translation API error:", error);
+      res.status(500).json({ error: error.message || "Failed to translate content." });
     }
   });
 

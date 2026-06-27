@@ -27,6 +27,7 @@ interface LongitudinalPanelProps {
   expertise?: string;
   isNewPatient?: boolean;
   activePatientId?: string | null;
+  language?: string;
 }
 
 // Simple and safe text-to-HTML parser to style markdown responses elegantly
@@ -70,14 +71,40 @@ export default function LongitudinalPanel({
   selectedModel,
   expertise,
   isNewPatient = false,
-  activePatientId = null
+  activePatientId = null,
+  language
 }: LongitudinalPanelProps) {
   const [activeTab, setActiveTab] = useState<"visualizer" | "report" | "graph">("visualizer");
   const [selectedParameter, setSelectedParameter] = useState<string>("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisReport, setAnalysisReport] = useState<string | null>(null);
+  const [analysisReportEn, setAnalysisReportEn] = useState<string | null>(null);
+  const [analysisReportVi, setAnalysisReportVi] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [activeDotsIndex, setActiveDotsIndex] = useState<number | null>(null);
+
+  const currentAnalysisReport = language === "vi" ? analysisReportVi : analysisReportEn;
+
+  // Auto-reset state when patient ID or records change to ensure fresh and synchronized visual data
+  React.useEffect(() => {
+    setAnalysisReportEn(null);
+    setAnalysisReportVi(null);
+    setAnalysisError(null);
+    setSelectedParameter("");
+    setActiveDotsIndex(null);
+  }, [activePatientId, records]);
+
+  // Map records to use the correct language-specific medicalData
+  const localizedRecords = useMemo(() => {
+    return records.map(rec => {
+      const data = language === "vi"
+        ? (rec.medicalDataVi || rec.medicalData)
+        : (rec.medicalDataEn || rec.medicalData);
+      return {
+        ...rec,
+        medicalData: data
+      };
+    });
+  }, [records, language]);
 
   // Graph tab only visible for existed patient
   const showGraphTab = !!activePatientId && !isNewPatient;
@@ -91,8 +118,8 @@ export default function LongitudinalPanel({
 
   // Chronological sorting (ascending by date)
   const sortedRecords = useMemo(() => {
-    return [...records].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [records]);
+    return [...localizedRecords].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [localizedRecords]);
 
   // Scan all findings and medications across historical records to find unique parameters and plot points
   const parameterHistory = useMemo(() => {
@@ -221,10 +248,14 @@ export default function LongitudinalPanel({
   }, [selectedParameter, parameterHistory]);
 
   const triggerLongitudinalAIAnalysis = async () => {
-    if (records.length === 0) return;
+    if (localizedRecords.length === 0) return;
     setIsAnalyzing(true);
     setAnalysisError(null);
-    setAnalysisReport(null);
+    if (language === "vi") {
+      setAnalysisReportVi(null);
+    } else {
+      setAnalysisReportEn(null);
+    }
 
     try {
       const response = await fetch("/api/analyze-longitudinal", {
@@ -233,8 +264,9 @@ export default function LongitudinalPanel({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          records: records,
-          model: selectedModel
+          records: localizedRecords,
+          model: selectedModel,
+          language: language
         })
       });
 
@@ -243,7 +275,11 @@ export default function LongitudinalPanel({
         throw new Error(resData.error || "The analytical progression server dropped response.");
       }
 
-      setAnalysisReport(resData.analysis);
+      if (language === "vi") {
+        setAnalysisReportVi(resData.analysis);
+      } else {
+        setAnalysisReportEn(resData.analysis);
+      }
       setActiveTab("report");
     } catch (err: any) {
       console.error(err);
@@ -252,6 +288,18 @@ export default function LongitudinalPanel({
       setIsAnalyzing(false);
     }
   };
+
+  // Auto-trigger analysis in the background/foreground if the user switches languages
+  // and they already have a generated report in the other language.
+  React.useEffect(() => {
+    const hasReportEn = !!analysisReportEn;
+    const hasReportVi = !!analysisReportVi;
+    if ((language === "vi" && hasReportEn && !hasReportVi) || (language === "en" && hasReportVi && !hasReportEn)) {
+      if (localizedRecords.length > 0 && !isAnalyzing) {
+        triggerLongitudinalAIAnalysis();
+      }
+    }
+  }, [language, analysisReportEn, analysisReportVi, localizedRecords, isAnalyzing]);
 
   const getStatusColorClass = (status: string) => {
     const s = status.toUpperCase();
@@ -269,15 +317,19 @@ export default function LongitudinalPanel({
         <div>
           <h2 className="text-base font-serif font-semibold text-stone-950 flex items-center gap-2">
             <TrendingUp className="text-emerald-600 stroke-[2.2]" size={18} />
-            Longitudinal Health Workspace ({records.length} {records.length === 1 ? "Record" : "Records"})
+            {language === "vi" 
+              ? `Không Gian Theo Dõi Sức Khỏe Liên Tục (${localizedRecords.length} Hồ sơ)` 
+              : `Longitudinal Health Workspace (${localizedRecords.length} ${localizedRecords.length === 1 ? "Record" : "Records"})`}
           </h2>
           <p className="text-xs text-stone-500 font-light mt-0.5">
-            Cross-day tracking, health progression timelines, and AI biomarker trend interpretation.
+            {language === "vi" 
+              ? "Theo dõi đa chiều, dòng thời gian tiến triển sức khỏe, và phân tích xu hướng chỉ số sinh học AI."
+              : "Cross-day tracking, health progression timelines, and AI biomarker trend interpretation."}
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          {records.length > 0 && (
+          {activePatientId && localizedRecords.length > 0 && (
             <button
               onClick={triggerLongitudinalAIAnalysis}
               disabled={isAnalyzing}
@@ -292,21 +344,43 @@ export default function LongitudinalPanel({
               ) : (
                 <Sparkles size={13} className="fill-emerald-100/10 text-emerald-50" />
               )}
-              {isAnalyzing ? "Synthesizing Trends..." : "Generate AI Progression Report"}
+              {isAnalyzing 
+                ? (language === "vi" ? "Đang phân tích..." : "Synthesizing Trends...") 
+                : (language === "vi" ? "Tạo báo cáo tiến triển AI" : "Generate AI Progression Report")}
             </button>
           )}
         </div>
       </div>
 
-      {sortedRecords.length === 0 ? (
+      {!activePatientId ? (
+        <div className="p-12 text-center flex flex-col items-center justify-center space-y-4 min-h-[300px]">
+          <div className="p-3 bg-amber-50 rounded-full border border-amber-150 text-amber-600">
+            <AlertTriangle size={24} className="stroke-[1.5]" />
+          </div>
+          <div className="max-w-md space-y-1">
+            <p className="text-sm font-semibold text-stone-900">
+              {language === "vi" ? "Chưa xác minh mã Patient ID hoạt động" : "No Active Patient ID Verified"}
+            </p>
+            <p className="text-xs text-stone-500 font-light leading-relaxed">
+              {language === "vi" 
+                ? "Vui lòng nhập và tra cứu hoặc đồng bộ một mã Patient ID trong bảng Xác Minh Hồ Sơ Bệnh Nhân ở trên để đồng bộ hóa và hiển thị lịch sử y tế của bệnh nhân đó."
+                : "Please enter and look up or synchronize a Patient ID in the Patient Database Console above to fetch and view that patient's longitudinal medical history."}
+            </p>
+          </div>
+        </div>
+      ) : sortedRecords.length === 0 ? (
         <div className="p-8 text-center flex flex-col items-center justify-center space-y-3 min-h-[300px]">
           <div className="p-3 bg-stone-50 rounded-full border border-stone-150 text-stone-400">
             <Clock size={24} className="stroke-[1.5]" />
           </div>
           <div className="max-w-sm">
-            <p className="text-sm font-semibold text-stone-900">Longitudinal Timeline is Empty</p>
+            <p className="text-sm font-semibold text-stone-900">
+              {language === "vi" ? "Lịch Sử Tiến Trình Sức Khỏe Đang Trống" : "Longitudinal Timeline is Empty"}
+            </p>
             <p className="text-xs text-stone-500 mt-1 font-light leading-relaxed">
-              When analyzing new dossiers, enable data archiving using the collection date selector to save logs chronologically to this dashboard and map biomarker metrics over time.
+              {language === "vi" 
+                ? "Khi phân tích hồ sơ mới, hãy kích hoạt lưu trữ dữ liệu bằng cách sử dụng bộ chọn ngày để lưu lại lịch sử theo thứ tự thời gian và vẽ biểu đồ xu hướng chỉ số."
+                : "When analyzing new dossiers, enable data archiving using the collection date selector to save logs chronologically to this dashboard and map biomarker metrics over time."}
             </p>
           </div>
         </div>
@@ -318,10 +392,10 @@ export default function LongitudinalPanel({
             <div className="flex items-center justify-between pb-1">
               <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-stone-500 flex items-center gap-1.5">
                 <Calendar size={13} className="text-emerald-600" />
-                Chronological Entries Log
+                {language === "vi" ? "Nhật Ký Bản Ghi Sức Khỏe" : "Chronological Entries Log"}
               </h3>
               <span className="text-[10px] font-mono bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full font-semibold">
-                Sorted oldest to newest
+                {language === "vi" ? "Từ cũ nhất đến mới nhất" : "Sorted oldest to newest"}
               </span>
             </div>
 
@@ -345,13 +419,13 @@ export default function LongitudinalPanel({
                             {formattedDate}
                           </p>
                           <h4 className="text-xs font-semibold text-stone-900 mt-0.5">
-                            {rec.medicalData.documentType || "Medical Lab Report"}
+                            {rec.medicalData.documentType || (language === "vi" ? "Báo cáo y tế phòng thí nghiệm" : "Medical Lab Report")}
                           </h4>
                         </div>
                         <button
                           onClick={() => onRemoveRecord(rec.id)}
                           className="text-stone-300 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition-colors cursor-pointer"
-                          title="Remove from history logger"
+                          title={language === "vi" ? "Xóa khỏi nhật ký lịch sử" : "Remove from history logger"}
                         >
                           <Trash2 size={13} />
                         </button>
@@ -408,7 +482,7 @@ export default function LongitudinalPanel({
                           })}
                           {rec.medicalData.findings.length > 3 && (
                             <span className="text-[9px] text-stone-400 pl-1">
-                              +{rec.medicalData.findings.length - 3} more finding metrics
+                              +{rec.medicalData.findings.length - 3} {language === "vi" ? "chỉ số phát hiện khác" : "more finding metrics"}
                             </span>
                           )}
                         </div>
@@ -433,7 +507,7 @@ export default function LongitudinalPanel({
                     activeTab === "visualizer" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
                   }`}
                 >
-                  Biomarker Trend Charts
+                  {language === "vi" ? "Biểu Đồ Xu Hướng Chỉ Số" : "Biomarker Trend Charts"}
                 </button>
                 {showGraphTab && (
                   <button
@@ -443,13 +517,13 @@ export default function LongitudinalPanel({
                     }`}
                   >
                     <Network size={12} className="text-emerald-600" />
-                    Clinical Knowledge Graph
+                    {language === "vi" ? "Sơ Đồ Tri Thức Lâm Sàng" : "Clinical Knowledge Graph"}
                   </button>
                 )}
                 <button
                   onClick={() => {
                     setActiveTab("report");
-                    if (!analysisReport) {
+                    if (!currentAnalysisReport) {
                       triggerLongitudinalAIAnalysis();
                     }
                   }}
@@ -457,8 +531,8 @@ export default function LongitudinalPanel({
                     activeTab === "report" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
                   }`}
                 >
-                  AI Progression Report
-                  {analysisReport && (
+                  {language === "vi" ? "Báo Cáo Tiến Triển AI" : "AI Progression Report"}
+                  {currentAnalysisReport && (
                     <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
                   )}
                 </button>
@@ -474,12 +548,14 @@ export default function LongitudinalPanel({
               <div className="m-5 p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-start gap-2.5">
                 <AlertTriangle size={15} className="shrink-0 mt-0.5 text-rose-600" />
                 <div>
-                  <span className="font-semibold">Trend Generation Failed</span> – {analysisError}
+                  <span className="font-semibold">
+                    {language === "vi" ? "Lỗi phân tích xu hướng" : "Trend Generation Failed"}
+                  </span> – {analysisError}
                   <button 
                     onClick={triggerLongitudinalAIAnalysis} 
                     className="block underline mt-1 font-semibold hover:text-rose-900 cursor-pointer"
                   >
-                    Retry Analysis
+                    {language === "vi" ? "Thử lại phân tích" : "Retry Analysis"}
                   </button>
                 </div>
               </div>
@@ -492,11 +568,16 @@ export default function LongitudinalPanel({
                   <div className="bg-emerald-50/40 rounded-xl border border-emerald-100 p-4 text-xs leading-relaxed text-stone-700 font-light flex items-start gap-3">
                     <Info size={16} className="text-emerald-700 shrink-0 mt-0.5" />
                     <div>
-                      <strong className="font-semibold text-emerald-950">Patient Knowledge Graph Engine:</strong> This interactive visual schema structures dates, biomarker measurement statistics, diagnoses, and medical interventions. You can toggle between simulating full patient registers from research databases above or analyzing your active uploaded files.
+                      <strong className="font-semibold text-emerald-950">
+                        {language === "vi" ? "Sơ đồ tri thức bệnh nhân:" : "Patient Knowledge Graph Engine:"}
+                      </strong>{" "}
+                      {language === "vi" 
+                        ? "Sơ đồ trực quan tương tác này cấu trúc hóa các ngày, thống kê đo lường chỉ số sinh học, chẩn đoán và can thiệp y tế. Bạn có thể chuyển đổi giữa việc mô phỏng sổ đăng ký bệnh nhân đầy đủ từ các cơ sở dữ liệu nghiên cứu ở trên hoặc phân tích các tệp đang hoạt động của bạn."
+                        : "This interactive visual schema structures dates, biomarker measurement statistics, diagnoses, and medical interventions. You can toggle between simulating full patient registers from research databases above or analyzing your active uploaded files."}
                     </div>
                   </div>
                   <ClinicalKnowledgeGraph 
-                    records={records} 
+                    records={localizedRecords} 
                     expertise={expertise} 
                     onViewTrend={(paramName) => {
                       setSelectedParameter(paramName);
@@ -512,7 +593,7 @@ export default function LongitudinalPanel({
                   <div className="space-y-2">
                     <label className="text-xs font-mono font-semibold text-stone-600 flex items-center gap-1.5">
                       <ChartIcon size={14} className="text-emerald-600" />
-                      Select Historical Biomarker to Track:
+                      {language === "vi" ? "Chọn chỉ số sinh học lịch sử để theo dõi:" : "Select Historical Biomarker to Track:"}
                     </label>
                     <div className="flex flex-wrap gap-1.5">
                       {parameterOptions.map((param) => {
@@ -557,19 +638,25 @@ export default function LongitudinalPanel({
                         <div className="flex items-center justify-between mb-2">
                           <div>
                             <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-stone-400">
-                              {isMedication ? "Medication Timeline" : "Active Trendline"}
+                              {isMedication 
+                                ? (language === "vi" ? "Dòng thời gian dùng thuốc" : "Medication Timeline") 
+                                : (language === "vi" ? "Đường xu hướng đang hoạt động" : "Active Trendline")}
                             </h4>
                             <p className="text-sm font-serif font-semibold text-stone-900">
-                              {isMedication ? `Refill Map of ${selectedParameter}` : `Chronology Map of ${selectedParameter}`}
+                              {isMedication 
+                                ? (language === "vi" ? `Bản đồ cấp phát thuốc của ${selectedParameter}` : `Refill Map of ${selectedParameter}`) 
+                                : (language === "vi" ? `Bản đồ trình tự thời gian của ${selectedParameter}` : `Chronology Map of ${selectedParameter}`)}
                             </p>
                           </div>
                           <div className="text-right">
                             <p className="text-xs font-mono text-stone-500">
-                              {isMedication ? "Fills count:" : "Detected range across day logs:"}
+                              {isMedication 
+                                ? (language === "vi" ? "Số lần cấp phát thuốc:" : "Fills count:") 
+                                : (language === "vi" ? "Phạm vi phát hiện qua nhật ký ngày:" : "Detected range across day logs:")}
                             </p>
                             <p className="text-xs font-mono font-bold text-stone-900">
                               {isMedication 
-                                ? `${chartData.points.length} Refills Recorded`
+                                ? (language === "vi" ? `Đã ghi nhận ${chartData.points.length} lần cấp phát` : `${chartData.points.length} Refills Recorded`)
                                 : `${chartData.minVal} – ${chartData.maxVal} ${chartData.points[0]?.unit || ""}`
                               }
                             </p>
@@ -600,9 +687,9 @@ export default function LongitudinalPanel({
                             {/* Y-Axis tick descriptors */}
                             {isMedication ? (
                               <>
-                                <text x="35" y="24" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">Prescribed</text>
-                                <text x="35" y="90" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">Filled</text>
-                                <text x="35" y="157" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">Active</text>
+                                <text x="35" y="24" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">{language === "vi" ? "Đã kê đơn" : "Prescribed"}</text>
+                                <text x="35" y="90" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">{language === "vi" ? "Đã cấp phát" : "Filled"}</text>
+                                <text x="35" y="157" textAnchor="end" className="text-[9px] fill-stone-400 font-mono">{language === "vi" ? "Đang dùng" : "Active"}</text>
                               </>
                             ) : (
                               <>
@@ -734,7 +821,7 @@ export default function LongitudinalPanel({
                                 <div className="w-full flex items-start justify-between gap-4 animate-fadeIn">
                                   <div className="space-y-1">
                                     <p className="text-[10px] font-mono text-stone-400">
-                                      Medication Refill Point – {new Date(activePt.date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                                      {language === "vi" ? "Điểm cấp phát thuốc" : "Medication Refill Point"} – {new Date(activePt.date).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US", { month: "long", day: "numeric", year: "numeric" })}
                                     </p>
                                     <div className="flex items-center gap-2">
                                       <h5 className="text-xs font-semibold text-stone-900">
@@ -746,14 +833,14 @@ export default function LongitudinalPanel({
                                     </div>
                                     {activePt.notes && (
                                       <p className="text-xs text-stone-500 font-light italic">
-                                        Clinical Purpose: {activePt.notes}
+                                        {language === "vi" ? "Mục đích lâm sàng: " : "Clinical Purpose: "} {activePt.notes}
                                       </p>
                                     )}
                                   </div>
                                   <div className="text-right whitespace-nowrap bg-purple-50 border border-purple-100 p-2 rounded-lg">
-                                    <p className="text-[9px] font-mono text-purple-500">Refill Status</p>
+                                    <p className="text-[9px] font-mono text-purple-500">{language === "vi" ? "Trạng thái cấp phát" : "Refill Status"}</p>
                                     <p className="text-xs font-mono font-bold text-purple-700">
-                                      Filled & Synchronized
+                                      {language === "vi" ? "Đã cấp phát & Đồng bộ" : "Filled & Synchronized"}
                                     </p>
                                   </div>
                                 </div>
@@ -764,7 +851,7 @@ export default function LongitudinalPanel({
                               <div className="w-full flex items-start justify-between gap-4 animate-fadeIn">
                                 <div className="space-y-1">
                                   <p className="text-[10px] font-mono text-stone-400">
-                                    Metric Point – {new Date(activePt.date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                                    {language === "vi" ? "Điểm chỉ số" : "Metric Point"} – {new Date(activePt.date).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US", { month: "long", day: "numeric", year: "numeric" })}
                                   </p>
                                   <div className="flex items-center gap-2">
                                     <h5 className="text-xs font-semibold text-stone-900">
@@ -779,13 +866,13 @@ export default function LongitudinalPanel({
                                   </div>
                                   {activePt.notes && (
                                     <p className="text-xs text-stone-500 font-light italic">
-                                      Notes: {activePt.notes}
+                                      {language === "vi" ? "Ghi chú: " : "Notes: "} {activePt.notes}
                                     </p>
                                   )}
                                 </div>
                                 {(activePt as any).referenceRange && (
                                   <div className="text-right whitespace-nowrap bg-stone-50 border border-stone-100 p-2 rounded-lg">
-                                    <p className="text-[9px] font-mono text-stone-400">Normal Range</p>
+                                    <p className="text-[9px] font-mono text-stone-400">{language === "vi" ? "Khoảng bình thường" : "Normal Range"}</p>
                                     <p className="text-xs font-mono font-medium text-stone-900">
                                       {(activePt as any).referenceRange}
                                     </p>
@@ -797,8 +884,8 @@ export default function LongitudinalPanel({
                             <div className="w-full text-center py-2 text-stone-400 text-xs font-light flex items-center justify-center gap-2">
                               <Activity size={14} className="text-emerald-500" />
                               {isMedication 
-                                ? "Hover over or click a point on the refill timeline to interpret dosage, refills, and clinical purpose."
-                                : "Hover over or click a point on the trendline graph to interpret individual test results."
+                                ? (language === "vi" ? "Di chuột qua hoặc nhấp vào một điểm trên dòng thời gian cấp phát thuốc để diễn giải liều lượng, cấp phát và mục đích lâm sàng." : "Hover over or click a point on the refill timeline to interpret dosage, refills, and clinical purpose.")
+                                : (language === "vi" ? "Di chuột qua hoặc nhấp vào một điểm trên biểu đồ đường xu hướng để diễn giải kết quả xét nghiệm riêng lẻ." : "Hover over or click a point on the trendline graph to interpret individual test results.")
                               }
                             </div>
                           )}
@@ -810,9 +897,13 @@ export default function LongitudinalPanel({
                     <div className="bg-stone-50 border border-stone-150 rounded-xl p-8 text-center flex flex-col items-center justify-center space-y-2.5">
                       <Clock size={20} className="text-stone-400" />
                       <div>
-                        <p className="text-xs font-semibold text-stone-850">Numeric Trendlines Pending</p>
+                        <p className="text-xs font-semibold text-stone-850">
+                          {language === "vi" ? "Đang chờ đường xu hướng số liệu" : "Numeric Trendlines Pending"}
+                        </p>
                         <p className="text-[11px] text-stone-500 leading-normal max-w-sm font-light mt-0.5">
-                          The current parameter "{selectedParameter}" does not contain structured numeric measurements (e.g. glucose "110 mg/dL"). Non-numeric properties are documented above inside the entry timeline log list.
+                          {language === "vi"
+                            ? `Chỉ số hiện tại "${selectedParameter}" không chứa các phép đo số có cấu trúc (ví dụ: glucose "110 mg/dL"). Các thuộc tính phi số được ghi nhận ở trên bên trong danh sách nhật ký dòng thời gian.`
+                            : `The current parameter "${selectedParameter}" does not contain structured numeric measurements (e.g. glucose "110 mg/dL"). Non-numeric properties are documented above inside the entry timeline log list.`}
                         </p>
                       </div>
                     </div>
@@ -822,7 +913,12 @@ export default function LongitudinalPanel({
                   <div className="bg-emerald-50/40 rounded-xl border border-emerald-100 p-4 text-xs leading-relaxed text-stone-700 font-light flex items-start gap-3">
                     <UserCheck size={16} className="text-emerald-700 shrink-0 mt-0.5" />
                     <div>
-                      <strong className="font-semibold text-emerald-950">How to populate longitudinal charts:</strong> Aegis scans all patient lab sheets chronologically. To trace progression, upload files of similar medical categories (for instance: consecutive CBC panel sheets or periodic glucose checks) across multiple calendar days.
+                      <strong className="font-semibold text-emerald-950">
+                        {language === "vi" ? "Cách bổ sung dữ liệu biểu đồ theo dõi liên tục:" : "How to populate longitudinal charts:"}
+                      </strong>{" "}
+                      {language === "vi"
+                        ? "Aegis quét tất cả các phiếu xét nghiệm của bệnh nhân theo thứ tự thời gian. Để theo dõi tiến triển, hãy tải lên các tệp có danh mục y tế tương tự (ví dụ: các phiếu tổng phân tích tế bào máu liên tiếp hoặc kiểm tra glucose định kỳ) trên nhiều ngày lịch."
+                        : "Aegis scans all patient lab sheets chronologically. To trace progression, upload files of similar medical categories (for instance: consecutive CBC panel sheets or periodic glucose checks) across multiple calendar days."}
                     </div>
                   </div>
 
@@ -836,13 +932,17 @@ export default function LongitudinalPanel({
                         <Sparkles size={16} className="absolute inset-x-0 inset-y-0 m-auto text-emerald-600 fill-emerald-100/20 animate-pulse" />
                       </div>
                       <div className="space-y-1">
-                        <p className="text-sm font-semibold text-stone-900">Synthesizing Patient Logs...</p>
+                        <p className="text-sm font-semibold text-stone-900">
+                          {language === "vi" ? "Đang tổng hợp nhật ký bệnh nhân..." : "Synthesizing Patient Logs..."}
+                        </p>
                         <p className="text-xs text-stone-500 max-w-xs font-light">
-                          Establishing chronological correlations across your records and testing parameters using {selectedModel}...
+                          {language === "vi"
+                            ? `Đang thiết lập mối tương quan theo trình tự thời gian giữa các bản ghi và chỉ số xét nghiệm của bạn bằng cách sử dụng ${selectedModel}...`
+                            : `Establishing chronological correlations across your records and testing parameters using ${selectedModel}...`}
                         </p>
                       </div>
                     </div>
-                  ) : analysisReport ? (
+                  ) : currentAnalysisReport ? (
                     <div className="bg-stone-50/30 border border-stone-200.5 rounded-2xl p-6.5 space-y-5 animate-fadeIn">
                       
                       <div className="flex items-center justify-between border-b border-stone-150 pb-4 mb-2">
@@ -852,10 +952,10 @@ export default function LongitudinalPanel({
                           </div>
                           <div>
                             <h4 className="text-sm font-serif font-bold text-stone-950">
-                              AI Health Progression Report
+                              {language === "vi" ? "Báo Cáo Tiến Triển Sức Khỏe AI" : "AI Health Progression Report"}
                             </h4>
                             <p className="text-[10px] text-stone-400 font-mono">
-                              GENERATED CHRONOLOGICALLY BY AEGIS-LOGS
+                              {language === "vi" ? "TỰ ĐỘNG TẠO THEO TRÌNH TỰ THỜI GIAN" : "GENERATED CHRONOLOGICALLY BY AEGIS-LOGS"}
                             </p>
                           </div>
                         </div>
@@ -864,13 +964,13 @@ export default function LongitudinalPanel({
                           onClick={triggerLongitudinalAIAnalysis}
                           className="px-3 py-1.5 bg-white border border-stone-200 hover:border-stone-400 text-stone-600 hover:text-stone-950 text-xs rounded-lg font-medium transition-all shadow-sm cursor-pointer flex items-center gap-1 shrink-0"
                         >
-                          <RefreshCw size={11} /> Refresh Report
+                          <RefreshCw size={11} /> {language === "vi" ? "Cập nhật báo cáo" : "Refresh Report"}
                         </button>
                       </div>
 
                       <div 
                         className="space-y-4.5 formatted-longitudinal-markdown"
-                        dangerouslySetInnerHTML={{ __html: renderTimelineMarkdown(analysisReport) }}
+                        dangerouslySetInnerHTML={{ __html: renderTimelineMarkdown(currentAnalysisReport) }}
                       />
 
                     </div>
@@ -880,15 +980,19 @@ export default function LongitudinalPanel({
                         <Sparkles size={22} className="stroke-[1.5]" />
                       </div>
                       <div className="max-w-xs">
-                        <p className="text-sm font-semibold text-stone-900">Generate Progression Analysis</p>
+                        <p className="text-sm font-semibold text-stone-900">
+                          {language === "vi" ? "Tạo Phân Tích Tiến Trình" : "Generate Progression Analysis"}
+                        </p>
                         <p className="text-xs text-stone-500 mt-1 font-light leading-relaxed">
-                          Ask Gemini to compile and evaluate all {records.length} historical day records to find hidden correlations and health trends.
+                          {language === "vi"
+                            ? `Yêu cầu Gemini biên dịch và đánh giá tất cả ${localizedRecords.length} hồ sơ lịch sử theo ngày để tìm ra các mối tương quan ẩn và xu hướng sức khỏe.`
+                            : `Ask Gemini to compile and evaluate all ${localizedRecords.length} historical day records to find hidden correlations and health trends.`}
                         </p>
                         <button
                           onClick={triggerLongitudinalAIAnalysis}
                           className="mt-4 px-4 py-2 bg-stone-900 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-all cursor-pointer"
                         >
-                          Generate AI Trend Report
+                          {language === "vi" ? "Tạo Báo Cáo Xu Hướng AI" : "Generate AI Trend Report"}
                         </button>
                       </div>
                     </div>

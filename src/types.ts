@@ -78,6 +78,8 @@ export interface HistoricalRecord {
   fileName?: string;
   imageName?: string;
   medicalData: MedicalData;
+  medicalDataEn?: MedicalData;
+  medicalDataVi?: MedicalData;
   chatHistory?: ChatMessage[];
 }
 

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Upload, FileText, CheckCircle2, AlertCircle, Layers, Image as ImageIcon, History, Sparkles, X, Calendar } from "lucide-react";
 import { UploadedFileState, MedicalData } from "../types";
 import { VoiceDictationButton } from "./VoiceControls";
+import { t } from "../translations";
 
 interface UploadZoneProps {
   onAnalysisStarted: () => void;
@@ -18,6 +19,7 @@ interface UploadZoneProps {
   manualCurationGuidance: string;
   activeSkills?: string[];
   sessionKey?: number;
+  language?: string;
 }
 
 export default function UploadZone({
@@ -30,6 +32,7 @@ export default function UploadZone({
   manualCurationGuidance,
   activeSkills,
   sessionKey,
+  language,
 }: UploadZoneProps) {
   // Independent uploading state for Document Column & Image Column
   const [docFile, setDocFile] = useState<UploadedFileState | null>(null);
@@ -147,6 +150,7 @@ export default function UploadZone({
         expertise: expertise,
         manualCurationGuidance: manualCurationGuidance,
         activeSkills: activeSkills,
+        language: language,
         documentFile: docFile
           ? {
               fileName: docFile.name,
@@ -194,6 +198,8 @@ export default function UploadZone({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
+  const lang = language || "en";
+
   return (
     <div id="integrated-dossier-compiler" className="bg-white border border-stone-200 rounded-xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)] space-y-6">
       
@@ -203,8 +209,8 @@ export default function UploadZone({
           <Layers size={18} className="stroke-[1.5]" />
         </div>
         <div>
-          <h2 className="font-serif text-lg font-medium text-stone-950">Integrated Dossier Entry</h2>
-          <p className="text-xs text-stone-500 font-light mt-0.5">Combine paper reports, clinical radiology scans, and patient history</p>
+          <h2 className="font-serif text-lg font-medium text-stone-950">{t("integrated_dossier_entry", lang)}</h2>
+          <p className="text-xs text-stone-500 font-light mt-0.5">{t("combine_desc", lang)}</p>
         </div>
       </div>
 
@@ -215,7 +221,7 @@ export default function UploadZone({
         <div className="flex flex-col space-y-2">
           <label className="text-xs font-mono font-semibold text-stone-600 flex items-center gap-1.5">
             <FileText size={14} className="text-emerald-600" />
-            Clinical Documents &amp; Lab Reports
+            {t("clinical_docs", lang)}
           </label>
           
           <div
@@ -266,7 +272,9 @@ export default function UploadZone({
                     <X size={14} />
                   </button>
                 </div>
-                <p className="text-[10px] text-stone-400 font-light italic">Click card or drop replacement report</p>
+                <p className="text-[10px] text-stone-400 font-light italic">
+                  {lang === "vi" ? "Click để thay thế hoặc thả tệp mới" : "Click card or drop replacement report"}
+                </p>
               </div>
             ) : (
               <div className="space-y-2 flex flex-col items-center">
@@ -274,8 +282,8 @@ export default function UploadZone({
                   <Upload size={16} />
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-stone-900">Drag PDF, Word, or Sheets</p>
-                  <p className="text-[11px] text-stone-400 font-light mt-0.5">or click to browse local files</p>
+                  <p className="text-xs font-medium text-stone-900">{t("drag_docs", lang)}</p>
+                  <p className="text-[11px] text-stone-400 font-light mt-0.5">{t("or_click", lang)}</p>
                 </div>
               </div>
             )}
@@ -286,7 +294,7 @@ export default function UploadZone({
         <div className="flex flex-col space-y-2">
           <label className="text-xs font-mono font-semibold text-stone-600 flex items-center gap-1.5">
             <ImageIcon size={14} className="text-emerald-600" />
-            Diagnostic Imaging (X-Ray, CT, MRI, Tissue)
+            {t("diagnostic_imaging", lang)}
           </label>
           
           <div
@@ -337,7 +345,9 @@ export default function UploadZone({
                     <X size={14} />
                   </button>
                 </div>
-                <p className="text-[10px] text-stone-400 font-light italic">Click card or drop replacement imaging visual</p>
+                <p className="text-[10px] text-stone-400 font-light italic">
+                  {lang === "vi" ? "Click để thay thế hoặc thả ảnh chụp mới" : "Click card or drop replacement imaging visual"}
+                </p>
               </div>
             ) : (
               <div className="space-y-2 flex flex-col items-center">
@@ -345,8 +355,8 @@ export default function UploadZone({
                   <ImageIcon size={16} />
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-stone-900">Drag X-Ray, CT, or Biopsy Scan</p>
-                  <p className="text-[11px] text-stone-400 font-light mt-0.5">or click to browse local visuals</p>
+                  <p className="text-xs font-medium text-stone-900">{t("drag_img", lang)}</p>
+                  <p className="text-[11px] text-stone-400 font-light mt-0.5">{t("or_click_img", lang)}</p>
                 </div>
               </div>
             )}
@@ -360,7 +370,7 @@ export default function UploadZone({
         <div className="space-y-1.5">
           <label className="text-xs font-mono font-semibold text-stone-600 flex items-center gap-1.5">
             <Calendar size={14} className="text-emerald-600" />
-            Report / Sample Collection Date
+            {t("report_date", lang)}
           </label>
           <input
             type="date"
@@ -371,7 +381,7 @@ export default function UploadZone({
           />
         </div>
         <div className="text-[10px] text-stone-400 flex items-center pt-5 font-light leading-normal">
-          Assigning a backdate allows compiling a chronologically sorted longitudinal tracking timeline across different days.
+          {t("report_date_desc", lang)}
         </div>
       </div>
 
@@ -380,11 +390,11 @@ export default function UploadZone({
         <div className="flex items-center justify-between">
           <label className="text-xs font-mono font-semibold text-stone-600 flex items-center gap-1.5">
             <History size={14} className="text-emerald-600" />
-            Patient Health History (Optional Context)
+            {t("patient_history", lang)}
           </label>
           <VoiceDictationButton 
             onTranscript={(text) => setMedicalHistory(prev => prev ? `${prev} ${text}` : text)}
-            placeholder="Dictating history..."
+            placeholder={lang === "vi" ? "Đang thu âm..." : "Dictating history..."}
             className="p-1.5 rounded-lg border-stone-150"
           />
         </div>
@@ -392,7 +402,7 @@ export default function UploadZone({
           value={medicalHistory}
           disabled={isProcessing}
           onChange={(e) => setMedicalHistory(e.target.value)}
-          placeholder="Enter historical context like: Hypertension, penicillin allergies, family histories, past surgeries, or active chronic complaints..."
+          placeholder={t("history_placeholder", lang)}
           className="w-full text-xs font-light p-3 border border-stone-200 rounded-xl bg-stone-50 text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-600 focus:border-emerald-600 transition-all min-h-[64px]"
         />
       </div>
@@ -400,7 +410,7 @@ export default function UploadZone({
       {/* Trigger CTA action area */}
       <div className="pt-2 border-t border-stone-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="text-[10.5px] text-stone-400 leading-normal font-light">
-          Upload either report document, visual diagnosis scan, or list patient histories to initiate combined multivariable AI clinical interpretation.
+          {t("upload_disclaimer", lang)}
         </div>
         
         <button
@@ -415,12 +425,12 @@ export default function UploadZone({
           {isProcessing ? (
             <React.Fragment>
               <div className="animate-spin h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full" />
-              <span>Transcribing Clinical Dossier...</span>
+              <span>{t("processing_btn", lang)}</span>
             </React.Fragment>
           ) : (
             <React.Fragment>
               <Sparkles size={14} className="fill-stone-100/10 text-white" />
-              <span>Analyze Integrated Medical Dossier</span>
+              <span>{t("analyze_btn", lang)}</span>
             </React.Fragment>
           )}
         </button>
@@ -430,7 +440,7 @@ export default function UploadZone({
       <div className="bg-stone-50 rounded-lg p-3.5 border border-stone-150 text-[11px] text-stone-600 leading-relaxed font-light flex items-start gap-2.5">
         <AlertCircle size={15} className="text-amber-600 shrink-0 mt-0.5 stroke-[1.8]" />
         <div>
-          <span className="font-semibold text-stone-850">Medical Disclaimer:</span> All factors, transcription outcomes, and medical visual scans must be strictly cross-verified against your primary physician's native files.
+          <span className="font-semibold text-stone-850">{lang === "vi" ? "Tuyên Bố Miễn Trừ Y Tế:" : "Medical Disclaimer:"}</span> {lang === "vi" ? "Mọi thông tin, kết quả dịch thuật và phân tích hình ảnh phải được đối chiếu và xác minh nghiêm ngặt với các hồ sơ gốc từ bác sĩ điều trị của bạn." : "All factors, transcription outcomes, and medical visual scans must be strictly cross-verified against your primary physician's native files."}
         </div>
       </div>
 

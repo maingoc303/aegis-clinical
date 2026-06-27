@@ -10,6 +10,7 @@ interface ChatPanelProps {
   manualCurationGuidance: string;
   activeSkills?: string[];
   sessionKey?: number;
+  language?: string;
 }
 
 // Simple and safe text-to-HTML formatter to render Gemini's Markdown output elegantly
@@ -53,15 +54,33 @@ export default function ChatPanel({
   manualCurationGuidance,
   activeSkills,
   sessionKey,
+  language,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
       role: "model",
-      content: "Hello! I am your AI Clinical Assistant. If you have uploaded a medical file, I have imported it into my workspace and can explain specific test results or prescriptions. What would you like to discuss today?",
+      content: language === "vi"
+        ? "Xin chào! Tôi là Trợ lý Lâm sàng AI của bạn. Nếu bạn đã tải lên tệp y tế, tôi đã nhập tệp đó vào không gian làm việc của mình và có thể giải thích các kết quả xét nghiệm hoặc đơn thuốc cụ thể. Hôm nay bạn muốn thảo luận điều gì?"
+        : "Hello! I am your AI Clinical Assistant. If you have uploaded a medical file, I have imported it into my workspace and can explain specific test results or prescriptions. What would you like to discuss today?",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
+
+  useEffect(() => {
+    if (messages.length === 1 && messages[0].id === "welcome") {
+      setMessages([
+        {
+          id: "welcome",
+          role: "model",
+          content: language === "vi"
+            ? "Xin chào! Tôi là Trợ lý Lâm sàng AI của bạn. Nếu bạn đã tải lên tệp y tế, tôi đã nhập tệp đó vào không gian làm việc của mình và có thể giải thích các kết quả xét nghiệm hoặc đơn thuốc cụ thể. Hôm nay bạn muốn thảo luận điều gì?"
+            : "Hello! I am your AI Clinical Assistant. If you have uploaded a medical file, I have imported it into my workspace and can explain specific test results or prescriptions. What would you like to discuss today?",
+          timestamp: messages[0].timestamp,
+        }
+      ]);
+    }
+  }, [language]);
 
   useEffect(() => {
     if (sessionKey !== undefined && sessionKey > 0) {
@@ -69,7 +88,9 @@ export default function ChatPanel({
         {
           id: "welcome",
           role: "model",
-          content: "Hello! I am your AI Clinical Assistant. If you have uploaded a medical file, I have imported it into my workspace and can explain specific test results or prescriptions. What would you like to discuss today?",
+          content: language === "vi"
+            ? "Xin chào! Tôi là Trợ lý Lâm sàng AI của bạn. Nếu bạn đã tải lên tệp y tế, tôi đã nhập tệp đó vào không gian làm việc của mình và có thể giải thích các kết quả xét nghiệm hoặc đơn thuốc cụ thể. Hôm nay bạn muốn thảo luận điều gì?"
+            : "Hello! I am your AI Clinical Assistant. If you have uploaded a medical file, I have imported it into my workspace and can explain specific test results or prescriptions. What would you like to discuss today?",
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -98,17 +119,26 @@ export default function ChatPanel({
 
   // Quick Action Chips to help users start conversations fast!
   const quickPrompts = medicalData 
-    ? [
+    ? (language === "vi" ? [
+        { label: "Phân tích giá trị bất thường", text: "Có chỉ số nào bất thường hoặc nằm ngoài phạm vi trong báo cáo của tôi không, và chúng có ý nghĩa gì?" },
+        { label: "Chi tiết danh sách thuốc", text: "Giải thích các loại thuốc được kê đơn, hướng dẫn chung và mục đích lâm sàng của chúng." },
+        { label: "Lối sống & Thói quen tốt", text: "Những thói quen lối sống lành mạnh hoặc hành động nào tôi nên thảo luận với bác sĩ của mình?" },
+        { label: "Tóm tắt báo cáo này", text: "Hãy cho tôi một bản tóm tắt dễ hiểu của tài liệu y tế này." }
+      ] : [
         { label: "Analyze out-of-range values", text: "Are there any abnormal or out-of-range parameters in my report, and what do they mean?" },
         { label: "Medication list detail", text: "Explain the prescribed medications, their general instructions, and clinical purposes." },
         { label: "Lifestyle action-items", text: "What healthy lifestyle habits or action items should I discuss with my physician?" },
         { label: "Summarize this report", text: "Give me an easy-to-understand executive summary of my medical document." }
-      ]
-    : [
+      ])
+    : (language === "vi" ? [
+        { label: "Mã bệnh nhân là gì?", text: "ID bệnh nhân hoặc mã số hồ sơ bệnh án (MRN) có ý nghĩa gì trong thủ tục lâm sàng?" },
+        { label: "Chuẩn bị xét nghiệm máu", text: "Các quy trình nhịn ăn thông thường trước khi thực hiện bảng xét nghiệm chuyển hóa toàn diện là gì?" },
+        { label: "Giải thích về dấu hiệu sinh tồn", text: "Huyết áp và nhịp tim bình thường đối với người trưởng thành khỏe mạnh là bao nhiêu?" }
+      ] : [
         { label: "What is an MRN?", text: "What does Patient ID or MRN stand for in clinical paperwork?" },
         { label: "Preparing for bloodwork", text: "What are typical fasting protocols before a standard comprehensive metabolic panel?" },
         { label: "Reading lab values", text: "How should I read the reference ranges on my lab test results sheets?" }
-      ];
+      ]);
 
   const handleSendMessage = async (rawMessageText: string) => {
     if (!rawMessageText.trim() || isTyping) return;
@@ -137,6 +167,7 @@ export default function ChatPanel({
         expertise: expertise,
         manualCurationGuidance: manualCurationGuidance,
         activeSkills: activeSkills,
+        language: language,
       };
 
       const response = await fetch("/api/medical-chat", {
@@ -198,11 +229,11 @@ export default function ChatPanel({
           </div>
           <div>
             <h3 className="font-serif text-sm font-semibold text-stone-950 flex items-center gap-1.5">
-              AI Clinical Assistant
+              {language === "vi" ? "Trợ Lý Lâm Sàng AI" : "AI Clinical Assistant"}
             </h3>
             <p className="text-[10px] text-stone-500 font-mono flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
-              {expertise ? `${expertise} SKILLS ACTIVE` : (medicalData ? "SYNCED WITH LOADED DOSSIER" : "ONLINE STANDBY")}
+              {expertise ? (language === "vi" ? `KỸ NĂNG ${expertise} ĐANG HOẠT ĐỘNG` : `${expertise} SKILLS ACTIVE`) : (medicalData ? (language === "vi" ? "ĐÃ ĐỒNG BỘ VỚI HỒ SƠ LÂM SÀNG" : "SYNCED WITH LOADED DOSSIER") : (language === "vi" ? "TRẠNG THÁI SẴN SÀNG" : "ONLINE STANDBY"))}
             </p>
           </div>
         </div>
@@ -210,15 +241,15 @@ export default function ChatPanel({
         <div className="flex items-center gap-2">
           {expertise && (
             <span className="hidden sm:inline-block text-[9px] font-mono font-bold bg-stone-900 text-stone-100 px-2 py-1 rounded-md">
-              Skills: {expertise === "PATIENT" ? "layman" : expertise === "MD_PRACTITIONER" ? "diagnosis+rx" : expertise === "PHARMACIST" ? "pharma" : expertise === "PATHOLOGIST" ? "biomarkers" : "research"}
+              {language === "vi" ? "Kỹ năng: " : "Skills: "}{expertise === "PATIENT" ? (language === "vi" ? "phổ thông" : "layman") : expertise === "MD_PRACTITIONER" ? (language === "vi" ? "chẩn đoán+đơn thuốc" : "diagnosis+rx") : expertise === "PHARMACIST" ? (language === "vi" ? "dược lý" : "pharma") : expertise === "PATHOLOGIST" ? (language === "vi" ? "chỉ số" : "biomarkers") : "research"}
             </span>
           )}
           <button 
             onClick={clearChat}
             className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-md transition-all text-xs font-mono tracking-wider flex items-center gap-1"
-            title="Clear dialog history"
+            title={language === "vi" ? "Xóa lịch sử cuộc hội thoại" : "Clear dialog history"}
           >
-            <RefreshCw size={11} /> Clear
+            <RefreshCw size={11} /> {language === "vi" ? "Xóa" : "Clear"}
           </button>
         </div>
       </div>
@@ -291,12 +322,12 @@ export default function ChatPanel({
           <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-start gap-2 max-w-[90%]">
             <AlertCircle size={14} className="shrink-0 mt-0.5" />
             <div>
-              <span className="font-semibold">Chat Assistance Error:</span> {apiError}
+              <span className="font-semibold">{language === "vi" ? "Lỗi Hỗ Trợ Trò Chuyện:" : "Chat Assistance Error:"}</span> {apiError}
               <button 
                 onClick={() => setApiError(null)} 
                 className="block underline mt-1 font-semibold hover:text-rose-900"
               >
-                Dismiss
+                {language === "vi" ? "Bỏ qua" : "Dismiss"}
               </button>
             </div>
           </div>
@@ -332,12 +363,14 @@ export default function ChatPanel({
           value={inputVal}
           onChange={(e) => setInputVal(e.target.value)}
           disabled={isTyping}
-          placeholder={medicalData ? "Ask about high values, dose protocols, or definitions..." : "Ask a medical question, CMP protocols, fasting rules..."}
+          placeholder={medicalData 
+            ? (language === "vi" ? "Hỏi về các chỉ số bất thường, hướng dẫn sử dụng, chẩn đoán..." : "Ask about high values, dose protocols, or definitions...")
+            : (language === "vi" ? "Nhập câu hỏi y tế, hướng dẫn nhịn ăn, chỉ số xét nghiệm..." : "Ask a medical question, CMP protocols, fasting rules...")}
           className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm font-light text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-all disabled:opacity-70"
         />
         <VoiceDictationButton
           onTranscript={(text) => setInputVal(prev => prev ? `${prev} ${text}` : text)}
-          placeholder="Dictating question..."
+          placeholder={language === "vi" ? "Đang thu âm..." : "Dictating question..."}
           className="p-3 rounded-xl border-stone-200"
         />
         <button

@@ -20,6 +20,7 @@ interface SummaryReportModalProps {
   activePatientId: string | null;
   clinicalExpertise: string;
   isNewPatient?: boolean;
+  language?: string;
 }
 
 export default function SummaryReportModal({
@@ -29,7 +30,8 @@ export default function SummaryReportModal({
   medicalData,
   activePatientId,
   clinicalExpertise,
-  isNewPatient = false
+  isNewPatient = false,
+  language
 }: SummaryReportModalProps) {
   const [agreedToSave, setAgreedToSave] = React.useState(false);
   
@@ -361,10 +363,10 @@ export default function SummaryReportModal({
             </div>
             <div>
               <h3 className="font-serif text-base font-semibold text-stone-900">
-                End Session Report &amp; Logout
+                {language === "vi" ? "Báo Cáo Kết Thúc Phiên & Đăng Xuất" : "End Session Report & Logout"}
               </h3>
               <p className="text-[11px] text-stone-500 font-mono">
-                Would you like a clinical discussion summary before logging out?
+                {language === "vi" ? "Bạn có muốn xem tóm tắt thảo luận lâm sàng trước khi đăng xuất không?" : "Would you like a clinical discussion summary before logging out?"}
               </p>
             </div>
           </div>
@@ -385,9 +387,13 @@ export default function SummaryReportModal({
               <div className="flex items-start gap-2.5">
                 <AlertTriangle size={18} className="shrink-0 text-rose-600 mt-0.5" />
                 <div className="space-y-1">
-                  <span className="font-semibold block text-[10px] uppercase tracking-wider font-mono text-rose-800">Consent &amp; Retention Warning</span>
+                  <span className="font-semibold block text-[10px] uppercase tracking-wider font-mono text-rose-800">
+                    {language === "vi" ? "Cảnh báo về Chấp thuận & Lưu trữ dữ liệu" : "Consent & Retention Warning"}
+                  </span>
                   <p className="text-[11px] text-rose-900 leading-normal font-medium">
-                    This is a brand new patient ID on our clinical database. If you do not agree to save this session's data, all clinical documentation and discussion transcripts will disappear permanently and cannot be used for future evaluation or visits.
+                    {language === "vi" 
+                      ? "Đây là mã bệnh nhân mới trên cơ sở dữ liệu lâm sàng của chúng tôi. Nếu bạn không đồng ý lưu dữ liệu phiên này, tất cả tài liệu lâm sàng và lịch sử trò chuyện sẽ biến mất vĩnh viễn và không thể sử dụng cho các cuộc đánh giá hoặc thăm khám trong tương lai." 
+                      : "This is a brand new patient ID on our clinical database. If you do not agree to save this session's data, all clinical documentation and discussion transcripts will disappear permanently and cannot be used for future evaluation or visits."}
                   </p>
                 </div>
               </div>
@@ -398,7 +404,9 @@ export default function SummaryReportModal({
                   onChange={(e) => setAgreedToSave(e.target.checked)}
                   className="rounded border-rose-300 text-rose-600 focus:ring-rose-500 w-4.5 h-4.5 cursor-pointer"
                 />
-                <span>I understand and agree to save this discussion data to the patient's record.</span>
+                <span>
+                  {language === "vi" ? "Tôi hiểu và đồng ý lưu dữ liệu cuộc thảo luận này vào hồ sơ bệnh nhân." : "I understand and agree to save this discussion data to the patient's record."}
+                </span>
               </label>
             </div>
           )}
@@ -407,9 +415,13 @@ export default function SummaryReportModal({
           <div className="p-3 bg-amber-50/50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2.5">
             <AlertTriangle size={15} className="shrink-0 text-amber-600 mt-0.5" />
             <div className="space-y-0.5">
-              <span className="font-semibold block text-[10px] uppercase tracking-wider font-mono">EHR Standard Summary (No Diagnosis)</span>
+              <span className="font-semibold block text-[10px] uppercase tracking-wider font-mono">
+                {language === "vi" ? "Tóm Tắt Tiêu Chuẩn EHR (Không chứa Chẩn đoán)" : "EHR Standard Summary (No Diagnosis)"}
+              </span>
               <p className="text-[11px] text-stone-600 leading-normal">
-                This document is generated for your personal reference. Adhering to clinical compliance mandates, it includes lab metrics and chat transcripts, but <strong>excludes any clinical diagnostic labels or prescriptive verdicts</strong>.
+                {language === "vi" 
+                  ? "Tài liệu này được tạo ra để phục vụ nhu cầu tham khảo cá nhân của bạn. Tuân thủ các quy tắc bảo mật lâm sàng, tài liệu này bao gồm các chỉ số xét nghiệm và bản ghi cuộc trò chuyện, nhưng loại trừ bất kỳ nhãn chẩn đoán lâm sàng hoặc kết luận kê đơn chính thức nào."
+                  : "This document is generated for your personal reference. Adhering to clinical compliance mandates, it includes lab metrics and chat transcripts, but excludes any clinical diagnostic labels or prescriptive verdicts."}
               </p>
             </div>
           </div>
@@ -425,57 +437,71 @@ export default function SummaryReportModal({
             <div className="flex justify-between items-start border-b border-stone-200 pb-3">
               <div>
                 <span className="font-serif text-sm font-bold tracking-tight text-stone-950 block uppercase">
-                  Aegis Summary Dossier
+                  {language === "vi" ? "Hồ Sơ Tóm Tắt Aegis" : "Aegis Summary Dossier"}
                 </span>
                 <span className="text-[10px] text-stone-400 font-mono font-light">
-                  Discussion Record Memo
+                  {language === "vi" ? "Biên Bản Thảo Luận Sức Khỏe" : "Discussion Record Memo"}
                 </span>
               </div>
               <div className="text-right text-[10px] text-stone-400 font-mono leading-tight">
-                Date: {currentDateString}<br />
-                Time: {currentTimeString}
+                {language === "vi" ? "Ngày: " : "Date: "} {currentDateString}<br />
+                {language === "vi" ? "Giờ: " : "Time: "} {currentTimeString}
               </div>
             </div>
 
             {/* Profile detail tags */}
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 bg-stone-50 p-3 rounded-lg border border-stone-150 text-[11px]">
               <div>
-                <span className="text-[9px] text-stone-400 uppercase tracking-wider font-mono">Patient Context</span>
+                <span className="text-[9px] text-stone-400 uppercase tracking-wider font-mono">
+                  {language === "vi" ? "Bệnh nhân" : "Patient Context"}
+                </span>
                 <p className="font-semibold text-stone-800">{patientNameText}</p>
               </div>
               <div>
-                <span className="text-[9px] text-stone-400 uppercase tracking-wider font-mono">Patient ID</span>
+                <span className="text-[9px] text-stone-400 uppercase tracking-wider font-mono">
+                  {language === "vi" ? "Mã bệnh nhân" : "Patient ID"}
+                </span>
                 <p className="font-semibold text-stone-800 font-mono">{patientIdText}</p>
               </div>
               <div>
-                <span className="text-[9px] text-stone-400 uppercase tracking-wider font-mono">Clinic / Source</span>
+                <span className="text-[9px] text-stone-400 uppercase tracking-wider font-mono">
+                  {language === "vi" ? "Cơ sở / Nguồn" : "Clinic / Source"}
+                </span>
                 <p className="font-medium text-stone-600 truncate">{medicalData?.facilityName || "Primary Care Registries"}</p>
               </div>
               <div>
-                <span className="text-[9px] text-stone-400 uppercase tracking-wider font-mono">Anonymization Role</span>
+                <span className="text-[9px] text-stone-400 uppercase tracking-wider font-mono">
+                  {language === "vi" ? "Chế độ Ẩn danh" : "Anonymization Role"}
+                </span>
                 <p className="font-medium text-stone-600">{clinicalExpertise} Mode</p>
               </div>
             </div>
 
             {/* Core Summary Paragraph preview */}
             <div className="space-y-1">
-              <span className="text-[10px] text-stone-400 uppercase tracking-wider font-mono block">Layperson Discussion Summary</span>
+              <span className="text-[10px] text-stone-400 uppercase tracking-wider font-mono block">
+                {language === "vi" ? "Tóm Tắt Thảo Luận Phổ Thông" : "Layperson Discussion Summary"}
+              </span>
               <p className="text-[11px] text-stone-600 leading-relaxed font-light italic">
-                "{medicalData?.summary || "No active clinical findings parsed in this session."}"
+                "{medicalData?.summary || (language === "vi" ? "Không có kết quả lâm sàng hoạt động nào được phân tích trong phiên này." : "No active clinical findings parsed in this session.")}"
               </p>
             </div>
 
             {/* Medical Metrics Preview Table snippet */}
             {medicalData?.findings && medicalData.findings.length > 0 && (
               <div className="space-y-1.5">
-                <span className="text-[10px] text-stone-400 uppercase tracking-wider font-mono block">Physiological Findings Summary ({medicalData.findings.length} parameters)</span>
+                <span className="text-[10px] text-stone-400 uppercase tracking-wider font-mono block">
+                  {language === "vi" 
+                    ? `Tóm Tắt Kết Quả Sinh Học (${medicalData.findings.length} chỉ số)` 
+                    : `Physiological Findings Summary (${medicalData.findings.length} parameters)`}
+                </span>
                 <div className="border border-stone-150 rounded-lg overflow-hidden">
                   <table className="w-full text-left border-collapse text-[10px]">
                     <thead>
                       <tr className="bg-stone-50 border-b border-stone-150 font-mono font-bold text-stone-500 text-[9px]">
-                        <th className="p-2">Observed Metric</th>
-                        <th className="p-2 text-right">Value</th>
-                        <th className="p-2 text-center">Status</th>
+                        <th className="p-2">{language === "vi" ? "Chỉ Số Quan Sát" : "Observed Metric"}</th>
+                        <th className="p-2 text-right">{language === "vi" ? "Giá Trị" : "Value"}</th>
+                        <th className="p-2 text-center">{language === "vi" ? "Trạng Thái" : "Status"}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -494,7 +520,9 @@ export default function SummaryReportModal({
                       {medicalData.findings.length > 3 && (
                         <tr className="bg-stone-50/50">
                           <td colSpan={3} className="p-1.5 text-center text-[9px] text-stone-400 italic">
-                            ... and {medicalData.findings.length - 3} other clinical parameters listed in full document report
+                            {language === "vi" 
+                              ? `... và ${medicalData.findings.length - 3} chỉ số lâm sàng khác được liệt kê trong báo cáo` 
+                              : `... and ${medicalData.findings.length - 3} other clinical parameters listed in full report`}
                           </td>
                         </tr>
                       )}
@@ -507,22 +535,30 @@ export default function SummaryReportModal({
             {/* Chat discussions summary snippet */}
             <div className="space-y-1.5">
               <span className="text-[10px] text-stone-400 uppercase tracking-wider font-mono block flex items-center gap-1">
-                <MessageSquare size={10} /> Active Session Chat Logs
+                <MessageSquare size={10} /> {language === "vi" ? "Nhật Ký Trò Chuyện Phiên Hoạt Động" : "Active Session Chat Logs"}
               </span>
               <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
                 {sessionChat.length > 0 ? (
                   sessionChat.slice(0, 2).map((m, i) => (
                     <div key={i} className="p-2 bg-stone-50 border border-stone-150 rounded text-[10px] text-stone-600 flex justify-between gap-2">
-                      <span className="font-mono text-stone-400 font-bold uppercase text-[8px] shrink-0">{m.role === "user" ? "You" : "AI"}</span>
+                      <span className="font-mono text-stone-400 font-bold uppercase text-[8px] shrink-0">
+                        {m.role === "user" ? (language === "vi" ? "Bạn" : "You") : "AI"}
+                      </span>
                       <p className="flex-1 truncate font-light">"{m.content}"</p>
                       <span className="text-[8px] text-stone-400 shrink-0">{m.timestamp}</span>
                     </div>
                   ))
                 ) : (
-                  <p className="text-[10px] text-stone-400 font-light italic">No chat messages sent in this session yet.</p>
+                  <p className="text-[10px] text-stone-400 font-light italic">
+                    {language === "vi" ? "Chưa có tin nhắn trò chuyện nào trong phiên này." : "No chat messages sent in this session yet."}
+                  </p>
                 )}
                 {sessionChat.length > 2 && (
-                  <p className="text-[8px] text-stone-400 text-center italic">... plus {sessionChat.length - 2} other dialogue exchanges listed in full document report</p>
+                  <p className="text-[8px] text-stone-400 text-center italic">
+                    {language === "vi" 
+                      ? `... cộng thêm ${sessionChat.length - 2} cuộc đối thoại khác trong báo cáo đầy đủ` 
+                      : `... plus ${sessionChat.length - 2} other dialogue exchanges listed in full report`}
+                  </p>
                 )}
               </div>
             </div>
@@ -531,7 +567,7 @@ export default function SummaryReportModal({
             <div className="border-t border-stone-200 pt-3 flex items-center justify-between text-[8.5px] text-stone-400 uppercase tracking-wider font-mono">
               <span className="flex items-center gap-1">
                 <ShieldCheck size={11} className="text-emerald-600" />
-                No Diagnoses Contained
+                {language === "vi" ? "Không Chứa Chẩn Đoán Lâm Sàng" : "No Diagnoses Contained"}
               </span>
               <span>Aegis Clinical v2.0</span>
             </div>
@@ -546,7 +582,7 @@ export default function SummaryReportModal({
             onClick={onClose}
             className="text-xs font-semibold text-stone-500 hover:text-stone-700 transition-colors w-full sm:w-auto text-center order-2 sm:order-1 cursor-pointer"
           >
-            Cancel
+            {language === "vi" ? "Hủy" : "Cancel"}
           </button>
           
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto order-1 sm:order-2">
@@ -558,7 +594,7 @@ export default function SummaryReportModal({
                   className="px-4 py-2 bg-white hover:bg-rose-50 border border-stone-200 hover:border-rose-200 text-stone-700 hover:text-rose-700 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <LogOut size={12} />
-                  Discard Data &amp; Logout
+                  {language === "vi" ? "Hủy Dữ Liệu & Đăng Xuất" : "Discard Data & Logout"}
                 </button>
 
                 {/* Save & Logout only */}
@@ -568,7 +604,7 @@ export default function SummaryReportModal({
                   className="px-4 py-2 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-100 disabled:text-stone-400 disabled:border-transparent text-white text-xs font-semibold border border-stone-900 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <FileCheck size={12} />
-                  Save &amp; Logout
+                  {language === "vi" ? "Lưu & Đăng Xuất" : "Save & Logout"}
                 </button>
 
                 {/* Print, Save & Logout */}
@@ -583,7 +619,7 @@ export default function SummaryReportModal({
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-500/20 disabled:text-emerald-700/40 text-white text-xs font-semibold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Printer size={12} />
-                  Print, Save &amp; Logout
+                  {language === "vi" ? "In, Lưu & Đăng Xuất" : "Print, Save & Logout"}
                 </button>
               </>
             ) : (
@@ -594,7 +630,7 @@ export default function SummaryReportModal({
                   className="px-4 py-2 bg-white hover:bg-stone-100 border border-stone-200 text-stone-700 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <LogOut size={12} />
-                  Just Logout
+                  {language === "vi" ? "Chỉ Đăng Xuất" : "Just Logout"}
                 </button>
 
                 <button
@@ -607,7 +643,7 @@ export default function SummaryReportModal({
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Printer size={12} />
-                  Print Report &amp; Logout
+                  {language === "vi" ? "In Báo Cáo & Đăng Xuất" : "Print Report & Logout"}
                 </button>
               </>
             )}

@@ -5,17 +5,19 @@ import {
 } from "lucide-react";
 import { MedicalData, UploadedFileState } from "../types";
 import { TextToSpeechButton } from "./VoiceControls";
+import { t } from "../translations";
 
 interface DossierDisplayProps {
   medicalData: MedicalData | null;
   documentFile: UploadedFileState | null;
   imageFile: UploadedFileState | null;
   clinicalExpertise?: string;
+  language?: string;
 }
 
 type FilterType = "ALL" | "ABNORMAL";
 
-export default function DossierDisplay({ medicalData, documentFile, imageFile, clinicalExpertise = "PATIENT" }: DossierDisplayProps) {
+export default function DossierDisplay({ medicalData, documentFile, imageFile, clinicalExpertise = "PATIENT", language = "en" }: DossierDisplayProps) {
   const [activeFilter, setActiveFilter] = useState<FilterType>("ALL");
 
   if (!medicalData) {
@@ -24,15 +26,27 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
         <div className="p-4 bg-white border border-stone-200 rounded-full text-stone-400 shadow-sm mb-4">
           <FileText size={32} className="stroke-[1.2]" />
         </div>
-        <h3 className="font-serif text-lg font-medium text-stone-950">Patient Clinical Dossier</h3>
+        <h3 className="font-serif text-lg font-medium text-stone-950">
+          {language === "vi" ? "Hồ Sơ Lâm Sàng Bệnh Nhân" : "Patient Clinical Dossier"}
+        </h3>
         <p className="text-sm text-stone-500 font-light max-w-sm mt-1 mb-5">
-          Submit either clinical documentation, metabolic spreadsheets, or standard diagnostic imagery scans (such as X-Ray, CT scans, or MRIs) to dynamically generate aggregated diagnoses and translations.
+          {language === "vi" 
+            ? "Tải lên tài liệu lâm sàng, bảng kết quả xét nghiệm hoặc hình ảnh chẩn đoán hình ảnh (X-Ray, CT, MRI) để tạo tóm tắt, chẩn đoán chi tiết và giải nghĩa chỉ số y tế tự động."
+            : "Submit either clinical documentation, metabolic spreadsheets, or standard diagnostic imagery scans (such as X-Ray, CT scans, or MRIs) to dynamically generate aggregated diagnoses and translations."}
         </p>
         <div className="flex flex-wrap justify-center gap-2 max-w-md">
-          <span className="px-2.5 py-1 bg-white text-stone-500 text-[10px] font-mono rounded-full border border-stone-150">PDF Reports</span>
-          <span className="px-2.5 py-1 bg-white text-stone-500 text-[10px] font-mono rounded-full border border-stone-150">X-Ray / MRI scans</span>
-          <span className="px-2.5 py-1 bg-white text-stone-500 text-[10px] font-mono rounded-full border border-stone-150">Spreadsheets</span>
-          <span className="px-2.5 py-1 bg-white text-stone-500 text-[10px] font-mono rounded-full border border-stone-150">Pathology H&amp;E Stain</span>
+          <span className="px-2.5 py-1 bg-white text-stone-500 text-[10px] font-mono rounded-full border border-stone-150">
+            {language === "vi" ? "Báo cáo PDF" : "PDF Reports"}
+          </span>
+          <span className="px-2.5 py-1 bg-white text-stone-500 text-[10px] font-mono rounded-full border border-stone-150">
+            {language === "vi" ? "Chụp X-Quang / MRI" : "X-Ray / MRI scans"}
+          </span>
+          <span className="px-2.5 py-1 bg-white text-stone-500 text-[10px] font-mono rounded-full border border-stone-150">
+            {language === "vi" ? "Bảng số liệu" : "Spreadsheets"}
+          </span>
+          <span className="px-2.5 py-1 bg-white text-stone-500 text-[10px] font-mono rounded-full border border-stone-150">
+            {language === "vi" ? "Tiêu bản bệnh lý H&E" : "Pathology H&E Stain"}
+          </span>
         </div>
       </div>
     );
@@ -92,7 +106,7 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
             <ShieldAlert size={20} className="text-rose-600 shrink-0 mt-0.5" />
             <div className="space-y-1.5 flex-1">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-rose-800 font-mono">
-                Urgent Clinical Watchlist
+                {t("urgent_watchlist", language)}
               </h4>
               <ul className="list-disc pl-4 space-y-1 text-xs text-rose-750 font-medium">
                 {medicalData.criticalAlerts.map((alert, idx) => (
@@ -112,7 +126,7 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="px-2 py-0.5 bg-emerald-500 text-stone-950 rounded text-[9px] font-mono font-bold uppercase tracking-wider">
-                Integrated Synthesis Result
+                {language === "vi" ? "Kết Quả Tổng Hợp Tích Hợp" : "Integrated Synthesis Result"}
               </span>
               {documentFile && (
                 <span className="px-1.5 py-0.5 bg-stone-800 text-stone-400 rounded text-[9px] font-mono">
@@ -126,40 +140,58 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
               )}
             </div>
             <h3 className="font-serif text-lg font-medium text-white tracking-tight mt-1.5">
-              {isPharmacist ? "Pharmacotherapy Summary Profile" : (medicalData.documentType || "Consolidated Clinical Dossier")}
+              {isPharmacist 
+                ? (language === "vi" ? "Hồ Sơ Tóm Tắt Dược Trị Liệu" : "Pharmacotherapy Summary Profile") 
+                : (medicalData.documentType || (language === "vi" ? "Hồ Sơ Lâm Sàng Hợp Nhất" : "Consolidated Clinical Dossier"))}
             </h3>
           </div>
           <div className="flex items-center gap-1.5 text-stone-400 text-xs font-mono shrink-0">
             <Calendar size={13} />
-            <span>Date: {medicalData.documentDate || "Synchronized Live"}</span>
+            <span>{language === "vi" ? "Ngày: " : "Date: "} {medicalData.documentDate || (language === "vi" ? "Đồng bộ trực tiếp" : "Synchronized Live")}</span>
           </div>
         </div>
 
         {/* Patient Bio & Document Facility metadata */}
         <div className="p-6 bg-stone-50/75 border-b border-stone-150 grid grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="space-y-1 pr-4 border-r border-stone-200/60">
-            <span className="text-[10px] font-mono text-stone-400 uppercase tracking-widest block">Patient Name</span>
+            <span className="text-[10px] font-mono text-stone-400 uppercase tracking-widest block">
+              {language === "vi" ? "Tên Bệnh Nhân" : "Patient Name"}
+            </span>
             <span className="text-sm font-semibold text-stone-900 truncate block">
-              {isAnonymized ? "Patient [ANONYMOUS COHORT]" : (medicalData.patientName || "Anonymous Patient")}
+              {isAnonymized 
+                ? (language === "vi" ? "Bệnh Nhân [ẨN DANH]" : "Patient [ANONYMOUS COHORT]") 
+                : (medicalData.patientName || (language === "vi" ? "Bệnh Nhân Ẩn Danh" : "Anonymous Patient"))}
             </span>
           </div>
           <div className="space-y-1 pr-4 lg:border-r border-stone-200/60">
-            <span className="text-[10px] font-mono text-stone-400 uppercase tracking-widest block">Bio Matrix</span>
+            <span className="text-[10px] font-mono text-stone-400 uppercase tracking-widest block">
+              {language === "vi" ? "Chỉ Số Sinh Học" : "Bio Matrix"}
+            </span>
             <span className="text-sm font-semibold text-stone-900 block">
-              {isAnonymized ? "REDACTED" : (medicalData.patientAge ? `${medicalData.patientAge}` : "Omitted") + " • " + (medicalData.patientGender || "Omitted")}
+              {isAnonymized 
+                ? (language === "vi" ? "ĐÃ LƯỢC BỎ" : "REDACTED") 
+                : (medicalData.patientAge ? `${medicalData.patientAge}` : (language === "vi" ? "Lược bỏ" : "Omitted")) + " • " + (medicalData.patientGender || (language === "vi" ? "Lược bỏ" : "Omitted"))}
             </span>
           </div>
           <div className="space-y-1 pr-4 border-r border-stone-200/60">
-            <span className="text-[10px] font-mono text-stone-400 uppercase tracking-widest block">Primary Facility</span>
+            <span className="text-[10px] font-mono text-stone-400 uppercase tracking-widest block">
+              {language === "vi" ? "Cơ Sở Khám" : "Primary Facility"}
+            </span>
             <span className="text-sm font-medium text-stone-850 truncate block flex items-center gap-1">
               <Hospital size={12} className="text-stone-400 shrink-0" />
-              {isAnonymized ? "REDACTED" : (medicalData.facilityName || "Clinical Lab/Omitted")}
+              {isAnonymized 
+                ? (language === "vi" ? "ĐÃ LƯỢC BỎ" : "REDACTED") 
+                : (medicalData.facilityName || (language === "vi" ? "Cơ sở lâm sàng/Lược bỏ" : "Clinical Lab/Omitted"))}
             </span>
           </div>
           <div className="space-y-1">
-            <span className="text-[10px] font-mono text-stone-400 uppercase tracking-widest block">Medical Provider</span>
+            <span className="text-[10px] font-mono text-stone-400 uppercase tracking-widest block">
+              {language === "vi" ? "Nhân Viên Y Tế" : "Medical Provider"}
+            </span>
             <span className="text-sm font-medium text-stone-850 truncate block">
-              {isAnonymized ? "REDACTED" : (medicalData.providerName || "Physician in Charge")}
+              {isAnonymized 
+                ? (language === "vi" ? "ĐÃ LƯỢC BỎ" : "REDACTED") 
+                : (medicalData.providerName || (language === "vi" ? "Bác Sĩ Chịu Trách Nhiệm" : "Physician in Charge"))}
             </span>
           </div>
         </div>
@@ -173,15 +205,15 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
             <div className="space-y-1.5 flex-1">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-700 font-mono flex items-center gap-1">
-                  Unified Clinical Summary
+                  {t("unified_summary", language)}
                 </h4>
                 {!isPharmacist && (
                   <TextToSpeechButton text={medicalData.summary || ""} className="p-1 py-1 rounded-lg text-emerald-600 bg-emerald-50/50" />
                 )}
               </div>
-              <p className="text-sm text-stone-650 leading-relaxed font-light">
+              <p className="text-sm text-stone-655 leading-relaxed font-light">
                 {isPharmacist 
-                  ? "Restricted View: Detailed medical text summaries are omitted for Pharmacist privacy compliance." 
+                  ? t("restricted_pharmacist", language)
                   : medicalData.summary}
               </p>
             </div>
@@ -198,13 +230,13 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5">
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-700 font-mono">
-                    Clinical Imaging Scan Interpretation (Vision-to-Language)
+                    {t("imaging_scan_interpretation", language)}
                   </h4>
                   <span className="inline-block px-1.5 py-0.5 bg-sky-100/70 border border-sky-200 text-sky-700 text-[8px] font-mono uppercase rounded font-bold tracking-wider">
-                    Foundation Model
+                    {t("foundation_model", language)}
                   </span>
                 </div>
-                <p className="text-xs text-stone-650 leading-relaxed font-light italic">
+                <p className="text-xs text-stone-655 leading-relaxed font-light italic">
                   "{medicalData.imageObservations}"
                 </p>
               </div>
@@ -219,7 +251,7 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
               <div className="flex items-center gap-1.5">
                 <Activity size={16} className="text-stone-600" />
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-800 font-mono">
-                  Biomarkers &amp; Findings Matrix
+                  {t("biomarkers_matrix", language)}
                 </h4>
               </div>
               {/* Filter controls */}
@@ -230,7 +262,7 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
                     activeFilter === "ALL" ? "bg-white text-stone-900 shadow-sm font-semibold" : "text-stone-500 hover:text-stone-900"
                   }`}
                 >
-                  All ({medicalData.findings.length})
+                  {t("all_findings", language)} ({medicalData.findings.length})
                 </button>
                 <button
                   onClick={() => setActiveFilter("ABNORMAL")}
@@ -238,14 +270,14 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
                     activeFilter === "ABNORMAL" ? "bg-white text-stone-900 shadow-sm font-semibold" : "text-stone-500 hover:text-stone-900"
                   }`}
                 >
-                  <AlertTriangle size={10} className="text-amber-600" /> Out of Range
+                  <AlertTriangle size={10} className="text-amber-600" /> {t("out_of_range", language)}
                 </button>
               </div>
             </div>
 
             {filteredFindings.length === 0 ? (
               <div className="text-center py-10 border border-dashed border-stone-200 rounded-lg text-xs font-mono text-stone-400">
-                No matching findings available for current filter setup.
+                {t("no_matching_findings", language)}
               </div>
             ) : (
               <div className="border border-stone-200 rounded-lg overflow-hidden">
@@ -253,11 +285,11 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="bg-stone-50 border-b border-stone-200 text-stone-500 font-mono font-medium">
-                        <th className="p-3">Biomarker / Variable</th>
-                        <th className="p-3 text-right">Value Detected</th>
-                        <th className="p-3">Reference Interval</th>
-                        <th className="p-3 text-center">Status</th>
-                        <th className="p-3">Clinical Context Notes</th>
+                        <th className="p-3">{t("biomarker_variable", language)}</th>
+                        <th className="p-3 text-right">{t("value_detected", language)}</th>
+                        <th className="p-3">{t("reference_interval", language)}</th>
+                        <th className="p-3 text-center">{t("status", language)}</th>
+                        <th className="p-3">{t("context_notes", language)}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -282,11 +314,13 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
                             <td className="p-3 text-center">
                               <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.bg}`}>
                                 <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-                                {finding.status || "NORMAL"}
+                                {language === "vi" 
+                                  ? t(finding.status?.toLowerCase() || "normal", language) 
+                                  : finding.status || "NORMAL"}
                               </span>
                             </td>
                             <td className="p-3 text-stone-600 text-[11px] leading-relaxed max-w-[200px]">
-                              {finding.notes || "No context annotated."}
+                              {finding.notes || t("no_context_annotated", language)}
                             </td>
                           </tr>
                         );
@@ -309,7 +343,7 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
             <div className="flex items-center gap-2 pb-3.5 border-b border-stone-100 mb-4">
               <ClipboardList size={16} className="text-stone-600" />
               <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-800 font-mono">
-                Identified Conditions / Impressions
+                {t("identified_conditions", language)}
               </h4>
             </div>
             {medicalData.diagnoses && medicalData.diagnoses.length > 0 ? (
@@ -323,7 +357,7 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
               </div>
             ) : (
               <div className="text-center py-8 text-xs font-mono text-stone-400 border border-dashed border-stone-150 rounded-lg">
-                No specific chronic/acute diagnosis statements found.
+                {t("no_conditions", language)}
               </div>
             )}
           </div>
@@ -335,7 +369,7 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
             <div className="flex items-center gap-2 pb-3.5 border-b border-stone-100 mb-4">
               <Pill size={16} className="text-stone-600" />
               <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-800 font-mono">
-                Interventions &amp; Recommendations (Pharmacotherapy)
+                {t("interventions_recs", language)}
               </h4>
             </div>
             {medicalData.medicationsAndRecommendations && medicalData.medicationsAndRecommendations.length > 0 ? (
@@ -347,12 +381,12 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
                     </div>
                     {med.dosageOrInstructions && (
                       <p className="text-[11px] text-stone-600 font-mono">
-                        Instructions: {med.dosageOrInstructions}
+                        {t("instructions", language)}: {med.dosageOrInstructions}
                       </p>
                     )}
                     {med.purpose && (
                       <p className="text-[11px] text-stone-500 font-light italic leading-normal">
-                        Intended Goal: {med.purpose}
+                        {t("intended_goal", language)}: {med.purpose}
                       </p>
                     )}
                   </div>
@@ -360,7 +394,7 @@ export default function DossierDisplay({ medicalData, documentFile, imageFile, c
               </div>
             ) : (
               <div className="text-center py-8 text-xs font-mono text-stone-400 border border-dashed border-stone-150 rounded-lg">
-                No prescription directions or recommendations annotated.
+                {t("no_prescriptions", language)}
               </div>
             )}
           </div>
