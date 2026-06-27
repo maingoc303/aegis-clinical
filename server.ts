@@ -191,6 +191,38 @@ const INITIAL_PATIENTS_DB: { [key: string]: any } = {
 const dbDir = path.join(process.cwd(), "data");
 const dbPath = path.join(dbDir, "patients_db.json");
 
+// Helper to safely write the patients database file atomically using a temp file
+async function writeDatabaseAtomic(data: any) {
+  const tempPath = dbPath + ".tmp";
+  try {
+    await fsPromises.writeFile(tempPath, JSON.stringify(data, null, 2), "utf-8");
+    await fsPromises.rename(tempPath, dbPath);
+  } catch (err) {
+    console.error("Atomic database write failed:", err);
+    // Fallback to direct write if rename fails for some reason
+    await fsPromises.writeFile(dbPath, JSON.stringify(data, null, 2), "utf-8");
+  }
+}
+
+// Helper to safely read and parse the patients database file
+async function readDatabaseSafe(): Promise<any> {
+  try {
+    if (!fs.existsSync(dbPath)) {
+      await writeDatabaseAtomic(INITIAL_PATIENTS_DB);
+      return INITIAL_PATIENTS_DB;
+    }
+    const content = await fsPromises.readFile(dbPath, "utf-8");
+    if (!content.trim()) {
+      return INITIAL_PATIENTS_DB;
+    }
+    return JSON.parse(content);
+  } catch (err) {
+    console.warn("Database file read or parse failed, self-healing back to INITIAL_PATIENTS_DB:", err);
+    await writeDatabaseAtomic(INITIAL_PATIENTS_DB);
+    return INITIAL_PATIENTS_DB;
+  }
+}
+
 // Ensure patient database file is initialized with seed data
 async function initializeDatabase() {
   try {
@@ -201,9 +233,8 @@ async function initializeDatabase() {
     if (!fs.existsSync(dbPath)) {
       needsWrite = true;
     } else {
-      const content = await fsPromises.readFile(dbPath, "utf-8");
       try {
-        const parsed = JSON.parse(content);
+        const parsed = await readDatabaseSafe();
         // If existing database lacks biobank details/images fields, trigger a migration rewrite
         const firstPatient = Object.values(parsed)[0] as any;
         if (!firstPatient || firstPatient.biobankInfo === undefined || firstPatient.images === undefined) {
@@ -215,7 +246,7 @@ async function initializeDatabase() {
     }
 
     if (needsWrite) {
-      await fsPromises.writeFile(dbPath, JSON.stringify(INITIAL_PATIENTS_DB, null, 2), "utf-8");
+      await writeDatabaseAtomic(INITIAL_PATIENTS_DB);
       console.log("Patient database successfully seeded/updated at: " + dbPath);
     }
   } catch (err) {
@@ -390,8 +421,7 @@ async function startServer() {
     try {
       const expertise = (req.query.expertise as string) || "PATIENT";
       await initializeDatabase();
-      const content = await fsPromises.readFile(dbPath, "utf-8");
-      const db = JSON.parse(content);
+      const db = await readDatabaseSafe();
       
       const patientsList = Object.values(db).map((patient: any) => {
         return applySecurityPolicy(patient, expertise);
@@ -413,8 +443,7 @@ async function startServer() {
       const expertise = (req.query.expertise as string) || "PATIENT";
       
       await initializeDatabase();
-      const content = await fsPromises.readFile(dbPath, "utf-8");
-      const db = JSON.parse(content);
+      const db = await readDatabaseSafe();
       
       // Check if patient exists
       const patient = db[patientId];
@@ -441,8 +470,7 @@ async function startServer() {
       }
 
       await initializeDatabase();
-      const content = await fsPromises.readFile(dbPath, "utf-8");
-      const db = JSON.parse(content);
+      const db = await readDatabaseSafe();
       
       if (!db[patientId]) {
         // If user is new, we store them as an anonymous patient based on patientId/user_id
@@ -465,7 +493,7 @@ async function startServer() {
         db[patientId].records.push(record);
       }
       
-      await fsPromises.writeFile(dbPath, JSON.stringify(db, null, 2), "utf-8");
+      await writeDatabaseAtomic(db);
       res.json({ success: true, message: `Dossier record saved to database for Patient ID: ${patientId}` });
     } catch (e: any) {
       console.error("Failed to write patient record:", e);
